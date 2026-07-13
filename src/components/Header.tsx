@@ -30,7 +30,7 @@ export function Header({ onToggleSidebar, user, isSupabaseConnected, onNavigate 
     {
       id: 1,
       title: 'Welcome to QuoteFlow PK',
-      desc: 'Phase 1 core setup loaded successfully. Supabase dynamic router initialized.',
+      desc: 'Workspace loaded successfully. Supabase dynamic router initialized.',
       time: 'Just now',
       unread: true,
     },

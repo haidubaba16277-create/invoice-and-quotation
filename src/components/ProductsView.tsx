@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
-  Users, 
+  Package, 
   Plus, 
   Search, 
   ArrowUpDown, 
@@ -8,35 +8,58 @@ import {
   Trash2, 
   Eye, 
   X, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  AlertCircle, 
+  Tag, 
+  DollarSign, 
+  Percent, 
+  Layers, 
+  Hash, 
   CheckCircle2, 
+  AlertCircle, 
   Loader2, 
-  Building2, 
-  MessageSquare, 
   ChevronLeft, 
   ChevronRight,
-  Sparkles,
+  Info,
   Calendar,
-  Globe
+  Layers3
 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
-import { Customer } from '../types/business';
+import { Product } from '../types/business';
 
-interface CustomersViewProps {
+interface ProductsViewProps {
   isSupabaseConnected: boolean;
 }
 
-type SortField = 'name' | 'date';
+type SortField = 'name' | 'price' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+const POPULAR_CATEGORIES = [
+  'Cloud Services',
+  'Software Development',
+  'Consulting',
+  'Support',
+  'Hardware',
+  'Subcription',
+  'Marketing',
+  'Other'
+];
+
+const POPULAR_UNITS = [
+  'Hour',
+  'Week',
+  'Month',
+  'Setup',
+  'Project',
+  'Piece',
+  'Box',
+  'Service'
+];
+
+export function ProductsView({ isSupabaseConnected }: ProductsViewProps) {
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,44 +73,56 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // Form State
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [formFields, setFormFields] = useState({
-    customerName: '',
-    companyName: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    notes: '',
+    productName: '',
+    sku: '',
+    category: '',
+    description: '',
+    unit: 'Piece',
+    price: '',
+    taxPercentage: '0',
   });
 
   const [formErrors, setFormErrors] = useState<{
-    customerName?: string;
-    phone?: string;
-    email?: string;
+    productName?: string;
+    price?: string;
+    sku?: string;
+    unit?: string;
   }>({});
 
-  // Customer to view / delete
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  // Product to view / delete
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Load Customers
-  const loadCustomers = async () => {
+  // Dynamic Categories loaded from products array + static ones
+  const categoriesList = useMemo(() => {
+    const list = new Set(POPULAR_CATEGORIES);
+    products.forEach(p => {
+      if (p.category && p.category.trim()) {
+        list.add(p.category.trim());
+      }
+    });
+    return ['All', ...Array.from(list)];
+  }, [products]);
+
+  // Load Products
+  const loadProducts = async () => {
     setLoading(true);
     try {
-      const data = await dataService.getCustomers();
-      setCustomers(data);
+      const data = await dataService.getProducts();
+      setProducts(data);
     } catch (err) {
-      console.error('Failed to load customers:', err);
-      showToast('Failed to load customers list.', 'error');
+      console.error('Failed to load products:', err);
+      showToast('Failed to load products list.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadCustomers();
+    loadProducts();
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -95,30 +130,38 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Filter and Sort Customers
-  const filteredAndSortedCustomers = useMemo(() => {
-    let result = [...customers];
+  // Filter and Sort Products
+  const filteredAndSortedProducts = useMemo(() => {
+    let result = [...products];
+
+    // Category filter
+    if (selectedCategory !== 'All') {
+      result = result.filter(p => p.category === selectedCategory);
+    }
 
     // Search filter
     if (searchTerm.trim()) {
       const searchLower = searchTerm.toLowerCase();
-      result = result.filter(c => 
-        c.customerName.toLowerCase().includes(searchLower) ||
-        (c.companyName && c.companyName.toLowerCase().includes(searchLower)) ||
-        c.phone.includes(searchLower) ||
-        (c.email && c.email.toLowerCase().includes(searchLower)) ||
-        (c.city && c.city.toLowerCase().includes(searchLower))
+      result = result.filter(p => 
+        p.productName.toLowerCase().includes(searchLower) ||
+        (p.sku && p.sku.toLowerCase().includes(searchLower)) ||
+        (p.description && p.description.toLowerCase().includes(searchLower)) ||
+        (p.category && p.category.toLowerCase().includes(searchLower))
       );
     }
 
     // Sort
     result.sort((a, b) => {
       if (sortField === 'name') {
-        const nameA = a.customerName.toLowerCase();
-        const nameB = b.customerName.toLowerCase();
+        const nameA = a.productName.toLowerCase();
+        const nameB = b.productName.toLowerCase();
         return sortOrder === 'asc' 
           ? nameA.localeCompare(nameB) 
           : nameB.localeCompare(nameA);
+      } else if (sortField === 'price') {
+        return sortOrder === 'asc' 
+          ? a.price - b.price 
+          : b.price - a.price;
       } else {
         // Date sort
         const dateA = new Date(a.createdAt || 0).getTime();
@@ -128,21 +171,21 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
     });
 
     return result;
-  }, [customers, searchTerm, sortField, sortOrder]);
+  }, [products, searchTerm, selectedCategory, sortField, sortOrder]);
 
   // Pagination (10 per page)
   const itemsPerPage = 10;
-  const totalPages = Math.ceil(filteredAndSortedCustomers.length / itemsPerPage) || 1;
+  const totalPages = Math.ceil(filteredAndSortedProducts.length / itemsPerPage) || 1;
   
-  const paginatedCustomers = useMemo(() => {
+  const paginatedProducts = useMemo(() => {
     const offset = (currentPage - 1) * itemsPerPage;
-    return filteredAndSortedCustomers.slice(offset, offset + itemsPerPage);
-  }, [filteredAndSortedCustomers, currentPage]);
+    return filteredAndSortedProducts.slice(offset, offset + itemsPerPage);
+  }, [filteredAndSortedProducts, currentPage]);
 
-  // Reset page on search or sort
+  // Reset page on filter/search or sort
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortField, sortOrder]);
+  }, [searchTerm, selectedCategory, sortField, sortOrder]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -158,111 +201,116 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
     const errors: typeof formErrors = {};
     let isValid = true;
 
-    if (!formFields.customerName.trim()) {
-      errors.customerName = 'Customer Name is required.';
+    if (!formFields.productName.trim()) {
+      errors.productName = 'Product name is required.';
       isValid = false;
     }
 
-    if (!formFields.phone.trim()) {
-      errors.phone = 'Phone number is required.';
+    const priceNum = parseFloat(formFields.price);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      errors.price = 'Price is required and must be greater than zero.';
       isValid = false;
     }
 
-    if (formFields.email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formFields.email.trim())) {
-        errors.email = 'Please enter a valid email format (e.g. name@company.com).';
-        isValid = false;
-      }
+    if (!formFields.unit.trim()) {
+      errors.unit = 'Unit measurement type is required.';
+      isValid = false;
     }
 
+    // SKU optional but validation can be done in dataService
     setFormErrors(errors);
     return isValid;
   };
 
   // Open Form modal for creation/edition
-  const openFormModal = (customer?: Customer) => {
-    if (customer) {
-      setEditingCustomer(customer);
+  const openFormModal = (product?: Product) => {
+    if (product) {
+      setEditingProduct(product);
       setFormFields({
-        customerName: customer.customerName,
-        companyName: customer.companyName || '',
-        phone: customer.phone,
-        email: customer.email || '',
-        address: customer.address || '',
-        city: customer.city || '',
-        notes: customer.notes || '',
+        productName: product.productName,
+        sku: product.sku || '',
+        category: product.category || 'Other',
+        description: product.description || '',
+        unit: product.unit,
+        price: product.price.toString(),
+        taxPercentage: (product.taxPercentage || 0).toString(),
       });
     } else {
-      setEditingCustomer(null);
+      setEditingProduct(null);
       setFormFields({
-        customerName: '',
-        companyName: '',
-        phone: '',
-        email: '',
-        address: '',
-        city: '',
-        notes: '',
+        productName: '',
+        sku: '',
+        category: 'Other',
+        description: '',
+        unit: 'Piece',
+        price: '',
+        taxPercentage: '0',
       });
     }
     setFormErrors({});
     setIsFormModalOpen(true);
   };
 
-  // Save Customer (Create/Update)
-  const handleSaveCustomer = async (e: React.FormEvent) => {
+  // Save Product (Create/Update)
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setFormLoading(true);
     try {
-      const customerPayload = {
-        ...formFields,
-        id: editingCustomer?.id,
+      const productPayload = {
+        productName: formFields.productName.trim(),
+        sku: formFields.sku.trim() || undefined,
+        category: formFields.category.trim() || 'Other',
+        description: formFields.description.trim() || undefined,
+        unit: formFields.unit.trim(),
+        price: parseFloat(formFields.price),
+        taxPercentage: parseFloat(formFields.taxPercentage) || 0,
+        id: editingProduct?.id,
       };
 
-      await dataService.saveCustomer(customerPayload);
+      await dataService.saveProduct(productPayload);
       showToast(
-        editingCustomer 
-          ? 'Customer details updated successfully!' 
-          : 'New customer profile registered successfully!', 
+        editingProduct 
+          ? 'Product details updated successfully!' 
+          : 'New product profile added to inventory!', 
         'success'
       );
       setIsFormModalOpen(false);
-      loadCustomers();
+      loadProducts();
     } catch (err: any) {
-      console.error('Failed to save customer:', err);
-      showToast(err.message || 'An error occurred while saving the customer.', 'error');
+      console.error('Failed to save product:', err);
+      showToast(err.message || 'An error occurred while saving the product.', 'error');
     } finally {
       setFormLoading(false);
     }
   };
 
   // Trigger Delete confirmation
-  const triggerDelete = (customer: Customer) => {
-    setSelectedCustomer(customer);
+  const triggerDelete = (product: Product) => {
+    setSelectedProduct(product);
     setIsDeleteModalOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
-    if (!selectedCustomer) return;
+    if (!selectedProduct) return;
     setDeleteLoading(true);
     try {
-      await dataService.deleteCustomer(selectedCustomer.id);
-      showToast('Customer contacts successfully deleted.', 'success');
+      await dataService.deleteProduct(selectedProduct.id);
+      showToast('Product successfully deleted from inventory.', 'success');
       setIsDeleteModalOpen(false);
-      setSelectedCustomer(null);
-      loadCustomers();
+      setSelectedProduct(null);
+      loadProducts();
     } catch (err: any) {
-      console.error('Failed to delete customer:', err);
-      showToast(err.message || 'Failed to delete customer record.', 'error');
+      console.error('Failed to delete product:', err);
+      showToast(err.message || 'Failed to delete product record.', 'error');
     } finally {
       setDeleteLoading(false);
     }
   };
 
-  const viewDetails = (customer: Customer) => {
-    setSelectedCustomer(customer);
+  const viewDetails = (product: Product) => {
+    setSelectedProduct(product);
     setIsDetailModalOpen(true);
   };
 
@@ -289,11 +337,11 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="h-5 w-5 text-indigo-500 dark:text-sky-400" />
-            Customer Directory
+            <Package className="h-5 w-5 text-indigo-500 dark:text-sky-400" />
+            Inventory & Products
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Store, validate, search, and manage your contacts, business associations, and private profiles.
+            Configure catalog goods, SaaS modules, hourly services, and applicable value-added taxes.
           </p>
         </div>
 
@@ -303,11 +351,28 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 hover:opacity-95 focus:outline-hidden transition-all shrink-0 active:scale-98"
         >
           <Plus className="h-4 w-4" />
-          <span>Add Customer</span>
+          <span>Add Product</span>
         </button>
       </div>
 
-      {/* CRM Actions card */}
+      {/* Categories Horizontal Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none">
+        {categoriesList.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              selectedCategory === cat
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/15'
+                : 'bg-white/80 border border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-900/60 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters and Search Action bar */}
       <GlassCard className="p-4" intensity="low">
         <div className="flex flex-col md:flex-row gap-3 md:items-center justify-between">
           
@@ -316,7 +381,7 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              placeholder="Search by name, company, email, city..."
+              placeholder="Search by name, SKU, category, or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white/50 pl-9.5 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all font-sans"
@@ -332,7 +397,7 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
             )}
           </div>
 
-          {/* Quick Filter Sort Toggle Indicators */}
+          {/* Quick Sorting Toggles */}
           <div className="flex items-center gap-2.5 self-end md:self-auto overflow-x-auto pb-1 md:pb-0">
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Sort by:</span>
             
@@ -344,8 +409,20 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
                   : 'bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
               }`}
             >
-              Customer Name
+              Name
               <ArrowUpDown className={`h-3 w-3 transition-transform ${sortField === 'name' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
+            </button>
+
+            <button
+              onClick={() => handleSort('price')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap border ${
+                sortField === 'price'
+                  ? 'bg-indigo-50/50 border-indigo-200 text-indigo-600 dark:bg-indigo-950/20 dark:border-indigo-900/40 dark:text-sky-400'
+                  : 'bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              Price
+              <ArrowUpDown className={`h-3 w-3 transition-transform ${sortField === 'price' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
             </button>
 
             <button
@@ -356,7 +433,7 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
                   : 'bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
               }`}
             >
-              Registration Date
+              Created Date
               <ArrowUpDown className={`h-3 w-3 transition-transform ${sortField === 'date' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
             </button>
           </div>
@@ -364,23 +441,23 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
         </div>
       </GlassCard>
 
-      {/* Main Table Screen */}
+      {/* Main Table View */}
       {loading ? (
         <div className="flex h-96 items-center justify-center">
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-sky-400" />
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono">Loading Contact Database...</p>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono">Loading Inventory Database...</p>
           </div>
         </div>
-      ) : customers.length === 0 ? (
+      ) : products.length === 0 ? (
         /* Empty State */
         <GlassCard className="p-12 text-center" intensity="medium">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-sky-400 mb-4">
-            <Users className="h-7 w-7" />
+            <Package className="h-7 w-7" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">No Customers Found</h3>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Empty Product Catalog</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
-            There are no customer records in your profile. Click the button below to register your first corporate contact.
+            There are no products or hourly services in your inventory. Tap below to configure your very first item.
           </p>
           <button
             type="button"
@@ -388,123 +465,133 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
             className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 focus:outline-hidden transition-all"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>Create First Customer</span>
+            <span>Add First Product</span>
           </button>
         </GlassCard>
-      ) : filteredAndSortedCustomers.length === 0 ? (
-        /* Search Query No Results */
+      ) : filteredAndSortedProducts.length === 0 ? (
+        /* No Search Results */
         <GlassCard className="p-12 text-center" intensity="medium">
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">No matching results for search query: "{searchTerm}"</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">No matching inventory items found for "{searchTerm}"</p>
           <button
             type="button"
-            onClick={() => setSearchTerm('')}
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedCategory('All');
+            }}
             className="mt-3 text-xs text-indigo-600 dark:text-sky-400 hover:underline font-bold"
           >
-            Clear Search Filters
+            Reset Catalog Filters
           </button>
         </GlassCard>
       ) : (
-        /* Customer Table */
+        /* Products Table */
         <div className="space-y-4">
           <GlassCard className="overflow-hidden border border-slate-200/60 dark:border-slate-800/60" intensity="medium">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200/80 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-950/40">
-                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Contact / Name</th>
-                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Company Name</th>
-                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Phone</th>
-                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">City</th>
-                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Reg. Date</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Item Detail</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">SKU / Code</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Category</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Unit Type</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Price (PKR)</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">VAT / Tax</th>
                     <th className="px-5 py-3.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                  {paginatedCustomers.map((customer) => (
+                  {paginatedProducts.map((product) => (
                     <tr 
-                      key={customer.id}
+                      key={product.id}
                       className="group hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors"
                     >
-                      {/* Name / Email */}
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50/80 text-xs font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-sky-300">
-                            {customer.customerName.charAt(0).toUpperCase()}
+                      {/* Name & Desc */}
+                      <td className="px-5 py-4 max-w-[280px]">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50/80 text-xs font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-sky-300 mt-0.5">
+                            <Package className="h-4 w-4" />
                           </div>
-                          <div>
-                            <span className="block text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-sky-400 transition-colors">
-                              {customer.customerName}
+                          <div className="min-w-0">
+                            <span className="block text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-sky-400 transition-colors truncate">
+                              {product.productName}
                             </span>
-                            {customer.email ? (
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate max-w-[150px]">
-                                {customer.email}
+                            {product.description ? (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate" title={product.description}>
+                                {product.description}
                               </span>
                             ) : (
-                              <span className="text-[10px] italic text-slate-400 dark:text-slate-600 block">No Email</span>
+                              <span className="text-[10px] italic text-slate-400 dark:text-slate-600 block">No description</span>
                             )}
                           </div>
                         </div>
                       </td>
 
-                      {/* Company */}
-                      <td className="px-5 py-4 text-xs font-medium text-slate-600 dark:text-slate-300">
-                        {customer.companyName ? (
-                          <div className="flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                            <span>{customer.companyName}</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-600 italic">Individual Contact</span>
-                        )}
-                      </td>
-
-                      {/* Phone */}
+                      {/* SKU */}
                       <td className="px-5 py-4 text-xs font-mono font-medium text-slate-700 dark:text-slate-400">
-                        {customer.phone}
-                      </td>
-
-                      {/* City */}
-                      <td className="px-5 py-4 text-xs text-slate-600 dark:text-slate-300">
-                        {customer.city ? (
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                            {customer.city}
+                        {product.sku ? (
+                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                            {product.sku}
                           </span>
                         ) : (
                           <span className="text-slate-400 dark:text-slate-600 italic">—</span>
                         )}
                       </td>
 
-                      {/* Reg Date */}
-                      <td className="px-5 py-4 text-xs text-slate-500 dark:text-slate-500">
-                        {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        }) : 'N/A'}
+                      {/* Category */}
+                      <td className="px-5 py-4 text-xs text-slate-600 dark:text-slate-300">
+                        {product.category ? (
+                          <span className="px-2.5 py-0.5 rounded-full border border-indigo-100 bg-indigo-50/50 text-[10px] font-bold text-indigo-600 dark:border-indigo-950/20 dark:bg-indigo-950/30 dark:text-sky-400 uppercase tracking-wide">
+                            {product.category}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-600 italic">Unassigned</span>
+                        )}
+                      </td>
+
+                      {/* Unit Type */}
+                      <td className="px-5 py-4 text-xs font-medium text-slate-600 dark:text-slate-300 font-mono">
+                        {product.unit}
+                      </td>
+
+                      {/* Price */}
+                      <td className="px-5 py-4 text-xs font-bold text-slate-800 dark:text-white font-mono">
+                        Rs. {product.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+
+                      {/* VAT / Tax */}
+                      <td className="px-5 py-4 text-xs font-medium text-slate-500 dark:text-slate-400 font-mono">
+                        {product.taxPercentage && product.taxPercentage > 0 ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                            {product.taxPercentage}% GST
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-600">Tax Exempt (0%)</span>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            title="View Customer Details"
-                            onClick={() => viewDetails(customer)}
+                            title="View Product Details"
+                            onClick={() => viewDetails(product)}
                             className="p-1.5 rounded-lg border border-transparent hover:border-slate-100 hover:bg-slate-100/50 text-slate-500 hover:text-slate-800 dark:hover:border-slate-800 dark:hover:bg-slate-800/50 dark:text-slate-400 dark:hover:text-white transition-all"
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                           
                           <button
-                            title="Edit Customer"
-                            onClick={() => openFormModal(customer)}
+                            title="Edit Product"
+                            onClick={() => openFormModal(product)}
                             className="p-1.5 rounded-lg border border-transparent hover:border-slate-100 hover:bg-slate-100/50 text-indigo-500 hover:text-indigo-700 dark:hover:border-slate-800 dark:hover:bg-slate-800/50 dark:text-sky-400 dark:hover:text-sky-300 transition-all"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
 
                           <button
-                            title="Delete Customer"
-                            onClick={() => triggerDelete(customer)}
+                            title="Delete Product"
+                            onClick={() => triggerDelete(product)}
                             className="p-1.5 rounded-lg border border-transparent hover:border-rose-100 hover:bg-rose-50/50 text-rose-500 hover:text-rose-700 dark:hover:border-rose-950/20 dark:hover:bg-rose-950/10 dark:text-rose-400 dark:hover:text-rose-300 transition-all"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -518,10 +605,10 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
             </div>
           </GlassCard>
 
-          {/* Pagination Selector bar */}
+          {/* Pagination Controls */}
           <div className="flex items-center justify-between px-2">
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              Showing <span className="font-bold text-slate-700 dark:text-white">{Math.min(filteredAndSortedCustomers.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredAndSortedCustomers.length, currentPage * itemsPerPage)}</span> of <span className="font-bold text-slate-700 dark:text-white">{filteredAndSortedCustomers.length}</span> customers
+              Showing <span className="font-bold text-slate-700 dark:text-white">{Math.min(filteredAndSortedProducts.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredAndSortedProducts.length, currentPage * itemsPerPage)}</span> of <span className="font-bold text-slate-700 dark:text-white">{filteredAndSortedProducts.length}</span> items
             </span>
 
             <div className="flex items-center gap-1">
@@ -559,12 +646,12 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
         </div>
       )}
 
-      {/* MODAL 1: ADD / EDIT CUSTOMER */}
+      {/* MODAL 1: ADD / EDIT PRODUCT */}
       {isFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
             
-            {/* Modal close */}
+            {/* Close */}
             <button
               onClick={() => setIsFormModalOpen(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
@@ -572,137 +659,161 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
               <X className="h-5 w-5" />
             </button>
 
-            {/* Modal Heading */}
+            {/* Title */}
             <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
-              <Users className="h-5 w-5 text-indigo-500" />
-              {editingCustomer ? 'Modify Customer Profile' : 'Register New Customer'}
+              <Package className="h-5 w-5 text-indigo-500" />
+              {editingProduct ? 'Modify Inventory Product' : 'Configure New Catalog Item'}
             </h3>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-5">
-              Enter customer metadata. Phone numbers are strictly unique triggers on contact profile registration.
+              Input specifications. SKUs are verified uniquely per workspace upon catalog record submission.
             </p>
 
             {/* Form */}
-            <form onSubmit={handleSaveCustomer} className="space-y-4">
+            <form onSubmit={handleSaveProduct} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 
-                {/* Customer Name */}
+                {/* Product Name */}
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Customer Name *
+                    Product Name / Title *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Haris Rehman"
-                    value={formFields.customerName}
-                    onChange={(e) => setFormFields({ ...formFields, customerName: e.target.value })}
+                    placeholder="e.g. Dedicated PostgreSQL DB Migration"
+                    value={formFields.productName}
+                    onChange={(e) => setFormFields({ ...formFields, productName: e.target.value })}
                     className={`w-full rounded-xl border bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:ring-1 dark:bg-slate-900/50 dark:text-slate-200 transition-all ${
-                      formErrors.customerName 
+                      formErrors.productName 
                         ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
                         : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
                     }`}
                   />
-                  {formErrors.customerName && (
-                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.customerName}</p>
+                  {formErrors.productName && (
+                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.productName}</p>
                   )}
                 </div>
 
-                {/* Company Name */}
+                {/* SKU / Code */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Company Name
+                    SKU Code (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Nexus Tech Ltd"
-                    value={formFields.companyName}
-                    onChange={(e) => setFormFields({ ...formFields, companyName: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all"
+                    placeholder="e.g. QF-DB-POSTGRES"
+                    value={formFields.sku}
+                    onChange={(e) => setFormFields({ ...formFields, sku: e.target.value })}
+                    className={`w-full rounded-xl border bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:ring-1 dark:bg-slate-900/50 dark:text-slate-200 transition-all ${
+                      formErrors.sku
+                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20'
+                        : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
+                    }`}
                   />
+                  {formErrors.sku && (
+                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.sku}</p>
+                  )}
                 </div>
 
-                {/* Phone */}
+                {/* Category Selection */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Phone Number *
+                    Category Group
+                  </label>
+                  <select
+                    value={formFields.category}
+                    onChange={(e) => setFormFields({ ...formFields, category: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all"
+                  >
+                    {POPULAR_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Price */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    Unit Price (PKR) *
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-2 py-0.5 text-xs text-slate-400 font-bold font-sans">Rs.</span>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      placeholder="0.00"
+                      value={formFields.price}
+                      onChange={(e) => setFormFields({ ...formFields, price: e.target.value })}
+                      className={`w-full rounded-xl border bg-white/50 pl-10.5 pr-3.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:ring-1 dark:bg-slate-900/50 dark:text-slate-200 transition-all font-mono ${
+                        formErrors.price 
+                          ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
+                          : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
+                      }`}
+                    />
+                  </div>
+                  {formErrors.price && (
+                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.price}</p>
+                  )}
+                </div>
+
+                {/* Unit of Measure */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    Unit of Measurement *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. +92 300 1234567"
-                    value={formFields.phone}
-                    onChange={(e) => setFormFields({ ...formFields, phone: e.target.value })}
+                    list="units"
+                    placeholder="e.g. Hour, Month, Piece"
+                    value={formFields.unit}
+                    onChange={(e) => setFormFields({ ...formFields, unit: e.target.value })}
                     className={`w-full rounded-xl border bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:ring-1 dark:bg-slate-900/50 dark:text-slate-200 transition-all ${
-                      formErrors.phone 
-                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
+                      formErrors.unit
+                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20'
                         : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
                     }`}
                   />
-                  {formErrors.phone && (
-                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.phone}</p>
+                  <datalist id="units">
+                    {POPULAR_UNITS.map(u => (
+                      <option key={u} value={u} />
+                    ))}
+                  </datalist>
+                  {formErrors.unit && (
+                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.unit}</p>
                   )}
                 </div>
 
-                {/* Email */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="e.g. client@domain.com"
-                    value={formFields.email}
-                    onChange={(e) => setFormFields({ ...formFields, email: e.target.value })}
-                    className={`w-full rounded-xl border bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:ring-1 dark:bg-slate-900/50 dark:text-slate-200 transition-all ${
-                      formErrors.email 
-                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
-                        : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
-                    }`}
-                  />
-                  {formErrors.email && (
-                    <p className="mt-1 text-[9px] text-rose-500 font-semibold">{formErrors.email}</p>
-                  )}
-                </div>
-
-                {/* City */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Karachi"
-                    value={formFields.city}
-                    onChange={(e) => setFormFields({ ...formFields, city: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all"
-                  />
-                </div>
-
-                {/* Full Address */}
+                {/* Value-Added Tax / GST */}
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Physical Address
+                    GST / Sales Tax Percentage (%)
                   </label>
-                  <textarea
-                    rows={2}
-                    placeholder="e.g. Suit 402, Dolmen Mall Clifton, Karachi"
-                    value={formFields.address}
-                    onChange={(e) => setFormFields({ ...formFields, address: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all resize-none"
-                  />
+                  <select
+                    value={formFields.taxPercentage}
+                    onChange={(e) => setFormFields({ ...formFields, taxPercentage: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all font-mono"
+                  >
+                    <option value="0">0% (Tax Exempt / Zero-Rated)</option>
+                    <option value="5">5% (Reduced Rate)</option>
+                    <option value="13">13% (Sindh Revenue Board Services GST)</option>
+                    <option value="16">16% (PRA Punjab Revenue Authority GST)</option>
+                    <option value="18">18% (Standard Pakistan FBR GST)</option>
+                  </select>
                 </div>
 
-                {/* Notes */}
+                {/* Item Description */}
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    CRM & Client Profile Notes
+                    Detailed Scope / Item Description
                   </label>
                   <textarea
                     rows={3}
-                    placeholder="Notes regarding quotation preference, pricing discounts, specific milestones..."
-                    value={formFields.notes}
-                    onChange={(e) => setFormFields({ ...formFields, notes: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all resize-none"
+                    placeholder="Enter structural components, scope, exclusions, or SLA specifics..."
+                    value={formFields.description}
+                    onChange={(e) => setFormFields({ ...formFields, description: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all resize-none font-sans"
                   />
                 </div>
 
@@ -720,10 +831,10 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
                 <button
                   type="submit"
                   disabled={formLoading}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 hover:opacity-95 focus:outline-hidden disabled:opacity-50 transition-all"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 hover:opacity-95 focus:outline-hidden disabled:opacity-50 transition-all animate-pulse-once"
                 >
                   {formLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-                  <span>{formLoading ? 'Saving...' : 'Save Profile'}</span>
+                  <span>{formLoading ? 'Configuring...' : 'Save Product'}</span>
                 </button>
               </div>
             </form>
@@ -733,7 +844,7 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
       )}
 
       {/* MODAL 2: CONFIRM DELETE */}
-      {isDeleteModalOpen && selectedCustomer && (
+      {isDeleteModalOpen && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-fade-in">
           <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl dark:border-rose-950/30 dark:bg-slate-950">
             
@@ -741,10 +852,10 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
               <Trash2 className="h-5 w-5" />
             </div>
 
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider text-center">Confirm Deletion</h3>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider text-center">Delete Product</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center leading-relaxed">
-              Are you absolutely sure you want to delete customer <strong>{selectedCustomer.customerName}</strong>?
-              This action is permanent and cannot be undone.
+              Are you sure you want to delete <strong>{selectedProduct.productName}</strong> from inventory?
+              All future quotations cannot link this exact model.
             </p>
 
             <div className="flex items-center justify-center gap-2 mt-5">
@@ -752,11 +863,11 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
                 type="button"
                 onClick={() => {
                   setIsDeleteModalOpen(false);
-                  setSelectedCustomer(null);
+                  setSelectedProduct(null);
                 }}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
               >
-                No, Keep Record
+                Cancel
               </button>
               <button
                 type="button"
@@ -773,88 +884,79 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
         </div>
       )}
 
-      {/* MODAL 3: VIEW CUSTOMER DETAILS */}
-      {isDetailModalOpen && selectedCustomer && (
+      {/* MODAL 3: VIEW PRODUCT DETAILS */}
+      {isDetailModalOpen && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-fade-in">
           <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
             
-            {/* Close button */}
+            {/* Close */}
             <button
               onClick={() => {
                 setIsDetailModalOpen(false);
-                setSelectedCustomer(null);
+                setSelectedProduct(null);
               }}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
             >
               <X className="h-5 w-5" />
             </button>
 
-            {/* Profile Avatar Card */}
+            {/* Title Card */}
             <div className="flex items-center gap-3.5 pb-4 border-b border-slate-100 dark:border-slate-800 mb-5">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-base font-bold text-white shadow-md shadow-indigo-500/10">
-                {selectedCustomer.customerName.charAt(0).toUpperCase()}
+                <Package className="h-6 w-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">{selectedCustomer.customerName}</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">{selectedProduct.productName}</h3>
                 <span className="text-[10px] text-indigo-600 dark:text-sky-400 font-bold flex items-center gap-1 mt-0.5">
-                  <Building2 className="h-3 w-3" />
-                  {selectedCustomer.companyName || 'Registered Individual'}
+                  <Layers3 className="h-3 w-3" />
+                  {selectedProduct.category || 'Other Category'}
                 </span>
               </div>
             </div>
 
-            {/* Profile Details fields */}
+            {/* Profile Fields */}
             <div className="space-y-4">
               
-              {/* Phone info */}
+              {/* SKU Info */}
               <div className="flex items-start gap-3">
-                <Phone className="h-4 w-4 text-slate-400 mt-0.5" />
+                <Hash className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Contact Number</span>
-                  <span className="text-xs font-mono font-medium text-slate-800 dark:text-slate-200">{selectedCustomer.phone}</span>
-                </div>
-              </div>
-
-              {/* Email info */}
-              <div className="flex items-start gap-3">
-                <Mail className="h-4 w-4 text-slate-400 mt-0.5" />
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Email Address</span>
-                  <span className="text-xs text-slate-800 dark:text-slate-200">
-                    {selectedCustomer.email || <span className="italic text-slate-400">None Provided</span>}
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Inventory SKU / Code</span>
+                  <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                    {selectedProduct.sku || <span className="italic font-normal text-slate-400">Not Configured</span>}
                   </span>
                 </div>
               </div>
 
-              {/* City info */}
+              {/* Price Info */}
               <div className="flex items-start gap-3">
-                <Globe className="h-4 w-4 text-slate-400 mt-0.5" />
+                <DollarSign className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Registered City</span>
-                  <span className="text-xs text-slate-800 dark:text-slate-200">
-                    {selectedCustomer.city || <span className="italic text-slate-400">Not Specified</span>}
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Base Cost Rate</span>
+                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    Rs. {selectedProduct.price.toLocaleString('en-US', { minimumFractionDigits: 2 })} / <span className="font-normal text-slate-500 dark:text-slate-400">{selectedProduct.unit}</span>
                   </span>
                 </div>
               </div>
 
-              {/* Physical Address info */}
+              {/* Tax Info */}
               <div className="flex items-start gap-3">
-                <MapPin className="h-4 w-4 text-slate-400 mt-0.5" />
+                <Percent className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Delivery Address</span>
-                  <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
-                    {selectedCustomer.address || <span className="italic text-slate-400">None Specified</span>}
-                  </p>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">FBR Sales Tax GST</span>
+                  <span className="text-xs text-slate-800 dark:text-slate-200 font-mono">
+                    {selectedProduct.taxPercentage ? `${selectedProduct.taxPercentage}%` : '0% (Tax Exempt)'}
+                  </span>
                 </div>
               </div>
 
-              {/* Notes info */}
+              {/* Description */}
               <div className="flex items-start gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-                <MessageSquare className="h-4 w-4 text-slate-400 mt-0.5" />
+                <Info className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Private CRM Comments</span>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 mt-1 leading-relaxed italic max-h-[140px] overflow-y-auto">
-                    {selectedCustomer.notes || 'No notes added for this contact profile yet.'}
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Catalog Scope Details</span>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 mt-1 leading-relaxed max-h-[140px] overflow-y-auto font-sans">
+                    {selectedProduct.description || 'No detailed scope configured for this catalog item.'}
                   </p>
                 </div>
               </div>
@@ -862,7 +964,7 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
               {/* Metadata dates */}
               <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800/80 mt-2">
                 <Calendar className="h-3 w-3" />
-                <span>Registered: {selectedCustomer.createdAt ? new Date(selectedCustomer.createdAt).toLocaleString() : 'N/A'}</span>
+                <span>Added: {selectedProduct.createdAt ? new Date(selectedProduct.createdAt).toLocaleString() : 'N/A'}</span>
               </div>
 
             </div>
@@ -873,11 +975,11 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
                 type="button"
                 onClick={() => {
                   setIsDetailModalOpen(false);
-                  setSelectedCustomer(null);
+                  setSelectedProduct(null);
                 }}
                 className="w-full rounded-xl bg-slate-100 hover:bg-slate-200/80 py-2.5 text-xs font-bold text-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
               >
-                Close Profile
+                Close Catalog Card
               </button>
             </div>
 

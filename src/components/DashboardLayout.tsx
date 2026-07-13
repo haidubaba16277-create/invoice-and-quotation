@@ -46,8 +46,25 @@ export function DashboardLayout({
 
         {/* Dynamic Content Frame */}
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            {children}
+          <div className="mx-auto max-w-7xl flex flex-col min-h-full justify-between">
+            <div>
+              {children}
+            </div>
+
+            {/* Premium App Footer */}
+            <footer className="mt-16 border-t border-slate-200/40 dark:border-slate-800/60 pt-6 pb-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-400 dark:text-slate-500 font-sans">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">QuoteFlow PK</span>
+                <span>•</span>
+                <span>Quotes That Flow, Business That Grows</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span>© {new Date().getFullYear()}</span>
+                <span className="inline-flex items-center rounded-md bg-indigo-50/80 dark:bg-indigo-950/40 px-2 py-0.5 font-mono text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 border border-indigo-100/50 dark:border-indigo-900/30">
+                  v1.0
+                </span>
+              </div>
+            </footer>
           </div>
         </main>
       </div>

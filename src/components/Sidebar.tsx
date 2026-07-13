@@ -12,6 +12,7 @@ import {
   Lock
 } from 'lucide-react';
 import { UserProfile } from '../types/auth';
+import { QuoteFlowLogo } from './QuoteFlowLogo';
 
 interface SidebarProps {
   currentView: string;
@@ -27,10 +28,10 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, isLocked: false },
     { id: 'customers', label: 'Customers', icon: Users, isLocked: false },
-    { id: 'products', label: 'Products & Items', icon: Package, isLocked: true },
-    { id: 'quotations', label: 'Quotations', icon: FileText, isLocked: true },
-    { id: 'invoices', label: 'Invoices', icon: Receipt, isLocked: true },
-    { id: 'reports', label: 'Reports', icon: BarChart3, isLocked: true },
+    { id: 'products', label: 'Products & Items', icon: Package, isLocked: false },
+    { id: 'quotations', label: 'Quotations', icon: FileText, isLocked: false },
+    { id: 'invoices', label: 'Invoices', icon: Receipt, isLocked: false },
+    { id: 'reports', label: 'Reports', icon: BarChart3, isLocked: false },
   ];
 
   const bottomItems = [
@@ -59,16 +60,14 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
         }`}
       >
         {/* Logo Section */}
-        <div className="flex h-12 items-center gap-2.5 px-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white shadow-md shadow-indigo-500/20">
-            <Sparkles className="h-5 w-5 animate-pulse" />
-          </div>
-          <div>
-            <h1 className="font-sans text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+        <div className="flex items-center gap-3 px-1">
+          <QuoteFlowLogo size={42} className="transition-transform duration-300 hover:scale-105" />
+          <div className="min-w-0">
+            <h1 className="font-sans text-[17px] font-black tracking-tight text-slate-900 dark:text-white leading-none">
               QuoteFlow <span className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">PK</span>
             </h1>
-            <p className="font-mono text-[9px] tracking-widest text-slate-400 uppercase">
-              Phase 1 Core
+            <p className="font-sans text-[9px] font-bold text-indigo-500 dark:text-sky-400 mt-1 leading-tight tracking-tight uppercase">
+              Quotes That Flow, Business That Grows
             </p>
           </div>
         </div>
@@ -98,13 +97,6 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
                     }`} />
                     <span>{item.label}</span>
                   </div>
-                  
-                  {item.isLocked && (
-                    <div className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                      <Lock className="h-2.5 w-2.5" />
-                      <span>Phase 2</span>
-                    </div>
-                  )}
                 </button>
               );
             })}
@@ -145,17 +137,24 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
 
             {/* Profile Bar */}
             {user && (
-              <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/50 p-3.5 dark:border-slate-900 dark:bg-slate-950/50">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-sm font-bold text-indigo-700 dark:bg-indigo-950 dark:text-sky-300">
-                  {user.fullName ? user.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'Q'}
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50/50 p-3.5 dark:border-slate-900 dark:bg-slate-950/50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-sm font-bold text-indigo-700 dark:bg-indigo-950 dark:text-sky-300">
+                    {user.fullName ? user.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'Q'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">
+                      {user.fullName || 'User Profile'}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                      {user.companyName || 'Corporate Client'}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">
-                    {user.fullName || 'User Profile'}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500 dark:text-slate-400">
-                    {user.companyName || 'Corporate Client'}
-                  </p>
+
+                <div className="flex items-center justify-between border-t border-slate-200/40 dark:border-slate-800/60 pt-2 text-[9px] font-mono font-medium text-slate-400 dark:text-slate-500 tracking-wider">
+                  <span>SYSTEM ACTIVE</span>
+                  <span>VERSION 1.0</span>
                 </div>
               </div>
             )}

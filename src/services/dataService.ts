@@ -53,51 +53,51 @@ const DEFAULT_CUSTOMERS: Customer[] = [
 const DEFAULT_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
-    code: 'QF-SaaS-01',
-    name: 'SaaS Cloud Hosting Setup',
+    sku: 'QF-SaaS-01',
+    productName: 'SaaS Cloud Hosting Setup',
     description: 'High-availability server deployment on Cloud Run with automated backups and failovers.',
-    cost: 45000,
-    margin: 30,
+    unit: 'Setup',
     price: 58500,
+    taxPercentage: 18,
     category: 'Cloud Services',
-    status: 'active',
     createdAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
   },
   {
     id: 'prod-2',
-    code: 'QF-DEV-02',
-    name: 'Custom React Web App Development',
+    sku: 'QF-DEV-02',
+    productName: 'Custom React Web App Development',
     description: 'Full-stack responsive design, state managers, and interactive dashboards mapped to custom APIs.',
-    cost: 150000,
-    margin: 40,
+    unit: 'Hour',
     price: 210000,
+    taxPercentage: 18,
     category: 'Software Development',
-    status: 'active',
     createdAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
   },
   {
     id: 'prod-3',
-    code: 'QF-CONS-03',
-    name: 'Corporate Agile Consultation (Weekly)',
+    sku: 'QF-CONS-03',
+    productName: 'Corporate Agile Consultation (Weekly)',
     description: 'Weekly team feedback, process pipeline audit, and sprint masterclass.',
-    cost: 80000,
-    margin: 25,
+    unit: 'Week',
     price: 100000,
+    taxPercentage: 18,
     category: 'Consulting',
-    status: 'active',
     createdAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
   },
   {
     id: 'prod-4',
-    code: 'QF-SUPP-04',
-    name: 'Enterprise Support SLA (Monthly)',
+    sku: 'QF-SUPP-04',
+    productName: 'Enterprise Support SLA (Monthly)',
     description: '24/7 priority response, dedicated slack support channel, and emergency hotfixes.',
-    cost: 30000,
-    margin: 20,
+    unit: 'Month',
     price: 36000,
+    taxPercentage: 18,
     category: 'Support',
-    status: 'active',
     createdAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
   }
 ];
 
@@ -108,33 +108,35 @@ const DEFAULT_QUOTATIONS: Quotation[] = [
     customerId: 'cust-1',
     customerName: 'Muhammad Ali',
     companyName: 'Karachi Tech Labs (Pvt) Ltd',
-    date: new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString().split('T')[0],
-    validUntil: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString().split('T')[0],
+    issueDate: new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString().split('T')[0],
+    expiryDate: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString().split('T')[0],
     items: [
       {
         productId: 'prod-1',
-        code: 'QF-SaaS-01',
-        name: 'SaaS Cloud Hosting Setup',
+        productName: 'SaaS Cloud Hosting Setup',
         quantity: 1,
         unitPrice: 58500,
-        totalPrice: 58500
+        taxPercentage: 18,
+        lineTotal: 69030
       },
       {
         productId: 'prod-4',
-        code: 'QF-SUPP-04',
-        name: 'Enterprise Support SLA (Monthly)',
+        productName: 'Enterprise Support SLA (Monthly)',
         quantity: 3,
         unitPrice: 36000,
-        totalPrice: 108000
+        taxPercentage: 18,
+        lineTotal: 127440
       }
     ],
     subtotal: 166500,
-    discount: 6500,
-    taxRate: 18, // 18% PK GST
+    discountType: 'fixed',
+    discountValue: 6500,
+    taxPercentage: 18, // 18% PK GST
     taxAmount: 28800, // (166500 - 6500) * 0.18
     grandTotal: 188800,
-    status: 'approved',
+    status: 'Accepted',
     notes: 'Please complete payment within 15 days of invoice generation.',
+    terms: 'Standard terms apply.',
     createdAt: new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString()
   },
   {
@@ -143,25 +145,27 @@ const DEFAULT_QUOTATIONS: Quotation[] = [
     customerId: 'cust-2',
     customerName: 'Aisha Khan',
     companyName: 'Lahore Retail Group',
-    date: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString().split('T')[0],
-    validUntil: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().split('T')[0],
+    issueDate: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString().split('T')[0],
+    expiryDate: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().split('T')[0],
     items: [
       {
         productId: 'prod-2',
-        code: 'QF-DEV-02',
-        name: 'Custom React Web App Development',
+        productName: 'Custom React Web App Development',
         quantity: 1,
         unitPrice: 210000,
-        totalPrice: 210000
+        taxPercentage: 18,
+        lineTotal: 247800
       }
     ],
     subtotal: 210000,
-    discount: 10000,
-    taxRate: 18,
+    discountType: 'fixed',
+    discountValue: 10000,
+    taxPercentage: 18,
     taxAmount: 36000,
     grandTotal: 236000,
-    status: 'sent',
+    status: 'Sent',
     notes: 'Development will begin immediately upon 50% advance invoice approval.',
+    terms: '50% advance, 50% on completion.',
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString()
   }
 ];
@@ -360,8 +364,13 @@ export const dataService = {
           return saved;
         }
       } catch (err: any) {
-        console.error('Failed to save to Supabase:', err);
-        throw err;
+        console.error('Failed to save customer to Supabase, falling back to Local Storage:', err);
+        if (err?.code === '42P01') {
+          isSupabaseSchemaActive = false;
+        }
+        if (err?.code === '23505') {
+          throw new Error('A customer with this phone number already exists in your contacts list.');
+        }
       }
     }
 
@@ -415,40 +424,43 @@ export const dataService = {
         if (error) {
           if (error.code === '42P01') {
             isSupabaseSchemaActive = false;
+            console.warn('Supabase products table does not exist yet. Falling back to Local Storage.');
           } else {
             throw error;
           }
         } else if (data) {
           return data.map(p => ({
             id: p.id,
-            code: p.code,
-            name: p.name,
-            description: p.description,
-            cost: Number(p.cost),
-            margin: Number(p.margin),
-            price: Number(p.price),
+            userId: p.user_id,
+            productName: p.product_name,
+            sku: p.sku,
             category: p.category,
-            status: p.status,
+            description: p.description,
+            unit: p.unit,
+            price: Number(p.price),
+            taxPercentage: Number(p.tax_percentage || 0),
             createdAt: p.created_at,
+            updatedAt: p.updated_at,
           }));
         }
       } catch (err) {
-        console.error('Failed to load from Supabase:', err);
+        console.error('Failed to load products from Supabase:', err);
       }
     }
 
     return JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]');
   },
 
-  async saveProduct(product: Omit<Product, 'id' | 'createdAt'> & { id?: string }): Promise<Product> {
+  async saveProduct(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Product> {
     const isNew = !product.id;
     const finalId = product.id || 'prod-' + Math.random().toString(36).substr(2, 9);
-    const finalCreatedAt = new Date().toISOString();
+    const nowStr = new Date().toISOString();
 
     const fullProduct: Product = {
       ...product,
       id: finalId,
-      createdAt: finalCreatedAt,
+      createdAt: isNew ? nowStr : (product as any).createdAt || nowStr,
+      updatedAt: nowStr,
     };
 
     if (isSupabaseConfigured && supabase && isSupabaseSchemaActive) {
@@ -457,14 +469,14 @@ export const dataService = {
         const mappedData = {
           id: isNew ? undefined : product.id,
           user_id: sessionUser?.id,
-          code: product.code,
-          name: product.name,
-          description: product.description,
-          cost: product.cost,
-          margin: product.margin,
+          product_name: product.productName,
+          sku: product.sku || null,
+          category: product.category || null,
+          description: product.description || null,
+          unit: product.unit,
           price: product.price,
-          category: product.category,
-          status: product.status,
+          tax_percentage: product.taxPercentage || 0,
+          updated_at: nowStr,
         };
 
         let result;
@@ -474,33 +486,66 @@ export const dataService = {
           result = await supabase.from('products').update(mappedData).eq('id', product.id).select().single();
         }
 
-        if (result.error) throw result.error;
+        if (result.error) {
+          if (result.error.code === '23505') {
+            throw new Error('A product with this SKU already exists in your inventory.');
+          }
+          throw result.error;
+        }
 
         if (result.data) {
-          return {
+          const saved: Product = {
             id: result.data.id,
-            code: result.data.code,
-            name: result.data.name,
-            description: result.data.description,
-            cost: Number(result.data.cost),
-            margin: Number(result.data.margin),
-            price: Number(result.data.price),
+            userId: result.data.user_id,
+            productName: result.data.product_name,
+            sku: result.data.sku,
             category: result.data.category,
-            status: result.data.status,
+            description: result.data.description,
+            unit: result.data.unit,
+            price: Number(result.data.price),
+            taxPercentage: Number(result.data.tax_percentage || 0),
             createdAt: result.data.created_at,
+            updatedAt: result.data.updated_at,
           };
+
+          // Sync with local storage
+          const products = await this.getProducts();
+          let updated;
+          if (isNew) {
+            updated = [saved, ...products];
+          } else {
+            updated = products.map(p => p.id === saved.id ? saved : p);
+          }
+          localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updated));
+          return saved;
         }
-      } catch (err) {
-        console.error('Failed to save to Supabase:', err);
+      } catch (err: any) {
+        console.error('Failed to save product to Supabase, falling back to Local Storage:', err);
+        if (err?.code === '42P01') {
+          isSupabaseSchemaActive = false;
+        }
+        if (err?.code === '23505') {
+          throw new Error('A product with this SKU already exists in your inventory.');
+        }
       }
     }
 
+    // Fallback/Local storage mode validation
     const products = await this.getProducts();
+    if (product.sku && product.sku.trim()) {
+      const isDuplicateSku = products.some(
+        p => p.sku && p.sku.trim().toLowerCase() === product.sku!.trim().toLowerCase() && p.id !== product.id
+      );
+      if (isDuplicateSku) {
+        throw new Error('A product with this SKU already exists in your inventory.');
+      }
+    }
+
     let updated;
     if (isNew) {
       updated = [fullProduct, ...products];
     } else {
-      updated = products.map(p => p.id === product.id ? { ...p, ...product } : p);
+      updated = products.map(p => p.id === product.id ? { ...p, ...product, updatedAt: nowStr } : p);
     }
 
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updated));
@@ -514,6 +559,7 @@ export const dataService = {
         if (error) throw error;
       } catch (err) {
         console.error('Failed to delete from Supabase:', err);
+        throw err;
       }
     }
 
@@ -530,52 +576,71 @@ export const dataService = {
       try {
         const { data, error } = await supabase
           .from('quotations')
-          .select('*')
+          .select(`
+            *,
+            customers (customer_name, company_name),
+            quotation_items (*)
+          `)
           .order('created_at', { ascending: false });
 
         if (error) {
           if (error.code === '42P01') {
             isSupabaseSchemaActive = false;
+            console.warn('Supabase quotations table does not exist yet. Falling back to Local Storage.');
           } else {
             throw error;
           }
         } else if (data) {
           return data.map(q => ({
             id: q.id,
+            userId: q.user_id,
             quoteNumber: q.quote_number,
             customerId: q.customer_id,
-            customerName: q.customer_name,
-            companyName: q.company_name,
-            date: q.date,
-            validUntil: q.valid_until,
-            items: typeof q.items === 'string' ? JSON.parse(q.items) : q.items,
-            subtotal: Number(q.subtotal),
-            discount: Number(q.discount),
-            taxRate: Number(q.tax_rate),
-            taxAmount: Number(q.tax_amount),
-            grandTotal: Number(q.grand_total),
+            customerName: q.customers?.customer_name || q.customer_name || 'Deleted Customer',
+            companyName: q.customers?.company_name || q.company_name || 'N/A',
+            issueDate: q.issue_date,
+            expiryDate: q.expiry_date,
             status: q.status,
+            subtotal: Number(q.subtotal),
+            discountType: q.discount_type || 'fixed',
+            discountValue: Number(q.discount_value || 0),
+            taxPercentage: Number(q.tax_percentage || 0),
+            taxAmount: Number(q.tax_amount || 0),
+            grandTotal: Number(q.grand_total),
             notes: q.notes,
+            terms: q.terms,
             createdAt: q.created_at,
+            updatedAt: q.updated_at,
+            items: (q.quotation_items || []).map((qi: any) => ({
+              id: qi.id,
+              quotationId: qi.quotation_id,
+              productId: qi.product_id,
+              productName: qi.product_name,
+              quantity: Number(qi.quantity),
+              unitPrice: Number(qi.unit_price),
+              taxPercentage: Number(qi.tax_percentage || 0),
+              lineTotal: Number(qi.line_total),
+            })),
           }));
         }
       } catch (err) {
-        console.error('Failed to load from Supabase:', err);
+        console.error('Failed to load quotations from Supabase:', err);
       }
     }
 
     return JSON.parse(localStorage.getItem(QUOTATIONS_KEY) || '[]');
   },
 
-  async saveQuotation(quotation: Omit<Quotation, 'id' | 'createdAt'> & { id?: string }): Promise<Quotation> {
+  async saveQuotation(quotation: Omit<Quotation, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Quotation> {
     const isNew = !quotation.id;
     const finalId = quotation.id || 'quote-' + Math.random().toString(36).substr(2, 9);
-    const finalCreatedAt = new Date().toISOString();
+    const nowStr = new Date().toISOString();
 
     const fullQuotation: Quotation = {
       ...quotation,
       id: finalId,
-      createdAt: finalCreatedAt,
+      createdAt: isNew ? nowStr : (quotation as any).createdAt || nowStr,
+      updatedAt: nowStr,
     };
 
     if (isSupabaseConfigured && supabase && isSupabaseSchemaActive) {
@@ -586,18 +651,18 @@ export const dataService = {
           user_id: sessionUser?.id,
           quote_number: quotation.quoteNumber,
           customer_id: quotation.customerId.startsWith('demo') || quotation.customerId.startsWith('cust-') ? null : quotation.customerId,
-          customer_name: quotation.customerName,
-          company_name: quotation.companyName,
-          date: quotation.date,
-          valid_until: quotation.validUntil,
-          items: quotation.items,
+          issue_date: quotation.issueDate,
+          expiry_date: quotation.expiryDate,
+          status: quotation.status,
           subtotal: quotation.subtotal,
-          discount: quotation.discount,
-          tax_rate: quotation.taxRate,
+          discount_type: quotation.discountType,
+          discount_value: quotation.discountValue,
+          tax_percentage: quotation.taxPercentage,
           tax_amount: quotation.taxAmount,
           grand_total: quotation.grandTotal,
-          status: quotation.status,
-          notes: quotation.notes,
+          notes: quotation.notes || null,
+          terms: quotation.terms || null,
+          updated_at: nowStr,
         };
 
         let result;
@@ -607,39 +672,96 @@ export const dataService = {
           result = await supabase.from('quotations').update(mappedData).eq('id', quotation.id).select().single();
         }
 
-        if (result.error) throw result.error;
+        if (result.error) {
+          if (result.error.code === '23505') {
+            throw new Error(`Quotation number ${quotation.quoteNumber} already exists in your records.`);
+          }
+          throw result.error;
+        }
 
         if (result.data) {
-          return {
+          const quoteId = result.data.id;
+
+          // Delete existing quotation items if updating
+          if (!isNew) {
+            await supabase.from('quotation_items').delete().eq('quotation_id', quoteId);
+          }
+
+          if (quotation.items && quotation.items.length > 0) {
+            const mappedItems = quotation.items.map(item => ({
+              quotation_id: quoteId,
+              product_id: item.productId && (item.productId.startsWith('prod-') || item.productId.startsWith('demo')) ? null : item.productId,
+              product_name: item.productName,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              tax_percentage: item.taxPercentage || 0,
+              line_total: item.lineTotal,
+            }));
+
+            const { error: itemsError } = await supabase.from('quotation_items').insert(mappedItems);
+            if (itemsError) throw itemsError;
+          }
+
+          const savedQuotation: Quotation = {
             id: result.data.id,
+            userId: result.data.user_id,
             quoteNumber: result.data.quote_number,
             customerId: result.data.customer_id || quotation.customerId,
-            customerName: result.data.customer_name,
-            companyName: result.data.company_name,
-            date: result.data.date,
-            validUntil: result.data.valid_until,
-            items: typeof result.data.items === 'string' ? JSON.parse(result.data.items) : result.data.items,
+            customerName: quotation.customerName,
+            companyName: quotation.companyName,
+            issueDate: result.data.issue_date,
+            expiryDate: result.data.expiry_date,
+            status: result.data.status,
             subtotal: Number(result.data.subtotal),
-            discount: Number(result.data.discount),
-            taxRate: Number(result.data.tax_rate),
+            discountType: result.data.discount_type,
+            discountValue: Number(result.data.discount_value),
+            taxPercentage: Number(result.data.tax_percentage),
             taxAmount: Number(result.data.tax_amount),
             grandTotal: Number(result.data.grand_total),
-            status: result.data.status,
             notes: result.data.notes,
+            terms: result.data.terms,
             createdAt: result.data.created_at,
+            updatedAt: result.data.updated_at,
+            items: quotation.items,
           };
+
+          // Update local cache
+          const quotations = await this.getQuotations();
+          let updated;
+          if (isNew) {
+            updated = [savedQuotation, ...quotations];
+          } else {
+            updated = quotations.map(q => q.id === savedQuotation.id ? savedQuotation : q);
+          }
+          localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(updated));
+
+          return savedQuotation;
         }
-      } catch (err) {
-        console.error('Failed to save to Supabase:', err);
+      } catch (err: any) {
+        console.error('Failed to save quotation to Supabase, falling back to Local Storage:', err);
+        if (err?.code === '42P01') {
+          isSupabaseSchemaActive = false;
+        }
+        if (err?.code === '23505') {
+          throw new Error(`Quotation number ${quotation.quoteNumber} already exists in your records.`);
+        }
       }
     }
 
+    // Local Storage fallback validation
     const quotations = await this.getQuotations();
+    const isDuplicateNum = quotations.some(
+      q => q.quoteNumber.trim().toLowerCase() === quotation.quoteNumber.trim().toLowerCase() && q.id !== quotation.id
+    );
+    if (isDuplicateNum) {
+      throw new Error(`Quotation number ${quotation.quoteNumber} already exists in your records.`);
+    }
+
     let updated;
     if (isNew) {
       updated = [fullQuotation, ...quotations];
     } else {
-      updated = quotations.map(q => q.id === quotation.id ? { ...q, ...quotation } : q);
+      updated = quotations.map(q => q.id === quotation.id ? { ...q, ...quotation, updatedAt: nowStr } : q);
     }
 
     localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(updated));
@@ -653,6 +775,7 @@ export const dataService = {
         if (error) throw error;
       } catch (err) {
         console.error('Failed to delete from Supabase:', err);
+        throw err;
       }
     }
 
@@ -667,14 +790,50 @@ export const dataService = {
 
     if (isSupabaseConfigured && supabase && isSupabaseSchemaActive) {
       try {
+        // Try fetching with invoice_items
         const { data, error } = await supabase
           .from('invoices')
-          .select('*')
+          .select('*, invoice_items(*)')
           .order('created_at', { ascending: false });
 
         if (error) {
           if (error.code === '42P01') {
-            isSupabaseSchemaActive = false;
+            console.warn('invoice_items table or invoices table not present, falling back to simple select');
+            // Try simple select
+            const simpleResult = await supabase
+              .from('invoices')
+              .select('*')
+              .order('created_at', { ascending: false });
+            
+            if (simpleResult.error) {
+              if (simpleResult.error.code === '42P01') {
+                isSupabaseSchemaActive = false;
+              } else {
+                throw simpleResult.error;
+              }
+            } else if (simpleResult.data) {
+              return simpleResult.data.map(i => ({
+                id: i.id,
+                invoiceNumber: i.invoice_number,
+                quoteId: i.quotation_id || i.quote_id || '',
+                quoteNumber: i.quote_number || '',
+                customerId: i.customer_id || '',
+                customerName: i.customer_name || 'N/A',
+                companyName: i.company_name || 'N/A',
+                date: i.invoice_date || i.date,
+                dueDate: i.due_date,
+                subtotal: Number(i.subtotal),
+                discount: Number(i.discount || 0),
+                taxAmount: Number(i.tax || i.tax_amount || 0),
+                grandTotal: Number(i.grand_total),
+                amountPaid: Number(i.amount_paid || 0),
+                paymentStatus: i.payment_status || 'Pending',
+                status: i.payment_status || i.status || 'Pending',
+                notes: i.notes || '',
+                createdAt: i.created_at,
+                items: [],
+              }));
+            }
           } else {
             throw error;
           }
@@ -682,19 +841,32 @@ export const dataService = {
           return data.map(i => ({
             id: i.id,
             invoiceNumber: i.invoice_number,
-            quoteId: i.quote_id,
-            quoteNumber: i.quote_number,
-            customerId: i.customer_id,
-            customerName: i.customer_name,
-            companyName: i.company_name,
-            date: i.date,
+            quoteId: i.quotation_id || i.quote_id || '',
+            quoteNumber: i.quote_number || '',
+            customerId: i.customer_id || '',
+            customerName: i.customer_name || 'N/A',
+            companyName: i.company_name || 'N/A',
+            date: i.invoice_date || i.date,
             dueDate: i.due_date,
             subtotal: Number(i.subtotal),
-            taxAmount: Number(i.tax_amount),
+            discount: Number(i.discount || 0),
+            taxAmount: Number(i.tax || i.tax_amount || 0),
             grandTotal: Number(i.grand_total),
-            amountPaid: Number(i.amount_paid),
-            status: i.status,
+            amountPaid: Number(i.amount_paid || 0),
+            paymentStatus: i.payment_status || 'Pending',
+            status: i.payment_status || i.status || 'Pending',
+            notes: i.notes || '',
             createdAt: i.created_at,
+            items: (i.invoice_items || []).map((ii: any) => ({
+              id: ii.id,
+              quotationId: ii.invoice_id,
+              productId: ii.product_id,
+              productName: ii.product_name,
+              quantity: Number(ii.quantity),
+              unitPrice: Number(ii.unit_price),
+              taxPercentage: Number(ii.tax_percentage || 0),
+              lineTotal: Number(ii.line_total),
+            })),
           }));
         }
       } catch (err) {
@@ -723,18 +895,21 @@ export const dataService = {
           id: isNew ? undefined : invoice.id,
           user_id: sessionUser?.id,
           invoice_number: invoice.invoiceNumber,
-          quote_id: invoice.quoteId.startsWith('quote') ? null : invoice.quoteId,
-          quote_number: invoice.quoteNumber,
-          customer_id: invoice.customerId.startsWith('demo') || invoice.customerId.startsWith('cust-') ? null : invoice.customerId,
+          quotation_id: invoice.quoteId && !invoice.quoteId.startsWith('quote') && !invoice.quoteId.startsWith('demo') ? invoice.quoteId : null,
+          quote_number: invoice.quoteNumber || null,
+          customer_id: invoice.customerId && !invoice.customerId.startsWith('demo') && !invoice.customerId.startsWith('cust-') ? invoice.customerId : null,
           customer_name: invoice.customerName,
-          company_name: invoice.companyName,
-          date: invoice.date,
+          company_name: invoice.companyName || null,
+          invoice_date: invoice.date,
           due_date: invoice.dueDate,
           subtotal: invoice.subtotal,
-          tax_amount: invoice.taxAmount,
+          discount: invoice.discount || 0,
+          tax: invoice.taxAmount,
           grand_total: invoice.grandTotal,
-          amount_paid: invoice.amountPaid,
-          status: invoice.status,
+          amount_paid: invoice.amountPaid || 0,
+          payment_status: invoice.paymentStatus || 'Pending',
+          notes: invoice.notes || null,
+          updated_at: new Date().toISOString(),
         };
 
         let result;
@@ -747,35 +922,72 @@ export const dataService = {
         if (result.error) throw result.error;
 
         if (result.data) {
-          return {
+          // Delete existing items if updating
+          if (!isNew) {
+            await supabase.from('invoice_items').delete().eq('invoice_id', finalId);
+          }
+
+          if (invoice.items && invoice.items.length > 0) {
+            const mappedItems = invoice.items.map(item => ({
+              invoice_id: finalId,
+              product_id: item.productId && !item.productId.startsWith('prod-') && !item.productId.startsWith('demo') ? item.productId : null,
+              product_name: item.productName,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              tax_percentage: item.taxPercentage || 0,
+              line_total: item.lineTotal,
+            }));
+
+            const { error: itemsError } = await supabase.from('invoice_items').insert(mappedItems);
+            if (itemsError) console.error('Failed to save invoice items to Supabase:', itemsError);
+          }
+
+          const savedInvoice: Invoice = {
             id: result.data.id,
             invoiceNumber: result.data.invoice_number,
-            quoteId: result.data.quote_id || invoice.quoteId,
-            quoteNumber: result.data.quote_number,
+            quoteId: result.data.quotation_id || invoice.quoteId,
+            quoteNumber: result.data.quote_number || invoice.quoteNumber || '',
             customerId: result.data.customer_id || invoice.customerId,
             customerName: result.data.customer_name,
-            companyName: result.data.company_name,
-            date: result.data.date,
+            companyName: result.data.company_name || '',
+            date: result.data.invoice_date || result.data.date || invoice.date,
             dueDate: result.data.due_date,
             subtotal: Number(result.data.subtotal),
-            taxAmount: Number(result.data.tax_amount),
+            discount: Number(result.data.discount || 0),
+            taxAmount: Number(result.data.tax || result.data.tax_amount || 0),
             grandTotal: Number(result.data.grand_total),
-            amountPaid: Number(result.data.amount_paid),
-            status: result.data.status,
+            amountPaid: Number(result.data.amount_paid || 0),
+            paymentStatus: result.data.payment_status || 'Pending',
+            status: result.data.payment_status || 'Pending',
+            notes: result.data.notes || '',
             createdAt: result.data.created_at,
+            items: invoice.items,
           };
+
+          // Update local storage cache
+          const localInvoices = await this.getInvoices();
+          let updated;
+          if (isNew) {
+            updated = [savedInvoice, ...localInvoices];
+          } else {
+            updated = localInvoices.map(i => i.id === savedInvoice.id ? savedInvoice : i);
+          }
+          localStorage.setItem(INVOICES_KEY, JSON.stringify(updated));
+
+          return savedInvoice;
         }
-      } catch (err) {
-        console.error('Failed to save to Supabase:', err);
+      } catch (err: any) {
+        console.error('Failed to save to Supabase, writing locally:', err);
       }
     }
 
-    const invoices = await this.getInvoices();
+    // LocalStorage Fallback
+    const localInvoices = await this.getInvoices();
     let updated;
     if (isNew) {
-      updated = [fullInvoice, ...invoices];
+      updated = [fullInvoice, ...localInvoices];
     } else {
-      updated = invoices.map(i => i.id === invoice.id ? { ...i, ...invoice } : i);
+      updated = localInvoices.map(i => i.id === invoice.id ? { ...i, ...invoice } : i);
     }
 
     localStorage.setItem(INVOICES_KEY, JSON.stringify(updated));
@@ -785,6 +997,7 @@ export const dataService = {
   async deleteInvoice(id: string): Promise<void> {
     if (isSupabaseConfigured && supabase && isSupabaseSchemaActive) {
       try {
+        await supabase.from('invoice_items').delete().eq('invoice_id', id);
         const { error } = await supabase.from('invoices').delete().eq('id', id);
         if (error) throw error;
       } catch (err) {
@@ -795,6 +1008,59 @@ export const dataService = {
     const invoices = await this.getInvoices();
     const filtered = invoices.filter(i => i.id !== id);
     localStorage.setItem(INVOICES_KEY, JSON.stringify(filtered));
+  },
+
+  async convertQuotationToInvoice(quotationId: string): Promise<Invoice> {
+    // 1. Get all quotations and find the matching one
+    const quotations = await this.getQuotations();
+    const quotation = quotations.find(q => q.id === quotationId);
+    if (!quotation) {
+      throw new Error('Quotation not found.');
+    }
+
+    // 2. Check if already converted to prevent duplicate invoice creation
+    const invoices = await this.getInvoices();
+    const alreadyConverted = invoices.find(i => i.quoteId === quotationId);
+    if (alreadyConverted) {
+      throw alreadyConverted; // Return existing invoice or throw
+    }
+
+    // 3. Generate unique invoice number
+    const count = invoices.length;
+    const invoiceNumber = `INV-${new Date().getFullYear()}-${String(2001 + count).padStart(4, '0')}`;
+
+    // 4. Create new Invoice object
+    const todayStr = new Date().toISOString().split('T')[0];
+    const dueDateStr = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 15 days due
+
+    const newInvoice: Omit<Invoice, 'id' | 'createdAt'> = {
+      invoiceNumber,
+      quoteId: quotation.id,
+      quoteNumber: quotation.quoteNumber,
+      customerId: quotation.customerId,
+      customerName: quotation.customerName || 'N/A',
+      companyName: quotation.companyName || 'N/A',
+      date: todayStr,
+      dueDate: dueDateStr,
+      subtotal: quotation.subtotal,
+      discount: quotation.discountValue,
+      taxAmount: quotation.taxAmount,
+      grandTotal: quotation.grandTotal,
+      amountPaid: 0,
+      paymentStatus: 'Pending',
+      status: 'Pending',
+      notes: quotation.notes || 'Converted from quotation ' + quotation.quoteNumber,
+      items: quotation.items || [],
+    };
+
+    // 5. Save the newly created invoice
+    const savedInvoice = await this.saveInvoice(newInvoice);
+
+    // 6. Update Quotation status to 'Converted'
+    quotation.status = 'Converted';
+    await this.saveQuotation(quotation);
+
+    return savedInvoice;
   },
 
   // --- Company Settings Methods ---
@@ -994,5 +1260,142 @@ export const dataService = {
       console.error('Failed to upload logo to Supabase storage:', err);
       throw err;
     }
+  },
+
+  async getPublicQuotation(quoteNumber: string): Promise<Quotation | null> {
+    if (isSupabaseConfigured && supabase && isSupabaseSchemaActive) {
+      try {
+        const { data, error } = await supabase
+          .from('quotations')
+          .select('*, quotation_items(*)')
+          .eq('quote_number', quoteNumber)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Failed to select public quotation, falling back to local list:', error);
+        } else if (data) {
+          const items: QuoteItem[] = (data.quotation_items || []).map((item: any) => ({
+            productId: item.product_id,
+            productName: item.product_name,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            taxPercentage: item.tax_percentage,
+            lineTotal: item.line_total,
+          }));
+
+          return {
+            id: data.id,
+            userId: data.user_id,
+            quoteNumber: data.quote_number,
+            customerId: data.customer_id,
+            customerName: data.customer_name || 'Direct Client',
+            companyName: data.company_name || 'N/A',
+            issueDate: data.issue_date,
+            expiryDate: data.expiry_date,
+            status: data.status,
+            subtotal: parseFloat(data.subtotal || '0'),
+            discountType: data.discount_type || 'fixed',
+            discountValue: parseFloat(data.discount_value || '0'),
+            taxPercentage: parseFloat(data.tax_percentage || '0'),
+            taxAmount: parseFloat(data.tax_amount || '0'),
+            grandTotal: parseFloat(data.grand_total || '0'),
+            notes: data.notes || '',
+            terms: data.terms || '',
+            items,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          };
+        }
+      } catch (err) {
+        console.error('Failed to get public quotation from Supabase:', err);
+      }
+    }
+
+    // LocalStorage fallback
+    const local = localStorage.getItem(QUOTATIONS_KEY);
+    if (local) {
+      try {
+        const quotes: Quotation[] = JSON.parse(local);
+        const found = quotes.find(q => q.quoteNumber === quoteNumber);
+        return found || null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  },
+
+  async updatePublicQuotationStatus(
+    quoteId: string, 
+    status: 'Accepted' | 'Rejected', 
+    extraData: { signatureName?: string; signatureDate?: string; rejectionReason?: string; rejectedDate?: string }
+  ): Promise<boolean> {
+    const timestamp = new Date().toISOString();
+    
+    if (isSupabaseConfigured && supabase && isSupabaseSchemaActive) {
+      try {
+        const payload: any = {
+          status,
+          updated_at: timestamp
+        };
+        
+        // Save digital signature details or rejection notes
+        if (status === 'Accepted' && extraData.signatureName) {
+          payload.notes = `[Digitally Approved & Signed by ${extraData.signatureName} on ${new Date().toLocaleString()}]` + (extraData.rejectionReason ? ` - Rejection cleared.` : '');
+        } else if (status === 'Rejected' && extraData.rejectionReason) {
+          payload.notes = `[Rejected Reason: ${extraData.rejectionReason} on ${new Date().toLocaleString()}]`;
+        }
+
+        const { error } = await supabase
+          .from('quotations')
+          .update(payload)
+          .eq('id', quoteId);
+
+        if (!error) {
+          return true;
+        } else {
+          console.error('Supabase quote status update error:', error);
+        }
+      } catch (err) {
+        console.error('Failed to update public quotation status in Supabase:', err);
+      }
+    }
+
+    // LocalStorage fallback update
+    const local = localStorage.getItem(QUOTATIONS_KEY);
+    if (local) {
+      try {
+        const quotes: Quotation[] = JSON.parse(local);
+        const idx = quotes.findIndex(q => q.id === quoteId);
+        if (idx !== -1) {
+          const originalNotes = quotes[idx].notes || '';
+          const cleanOriginal = originalNotes.replace(/\[Digitally Approved.*\]/g, '').replace(/\[Rejected Reason.*\]/g, '').trim();
+          
+          let appendedNotes = cleanOriginal;
+          if (status === 'Accepted' && extraData.signatureName) {
+            appendedNotes = `[Digitally Approved & Signed by ${extraData.signatureName} on ${new Date().toLocaleString()}] ${cleanOriginal}`;
+          } else if (status === 'Rejected' && extraData.rejectionReason) {
+            appendedNotes = `[Rejected Reason: ${extraData.rejectionReason} on ${new Date().toLocaleString()}] ${cleanOriginal}`;
+          }
+
+          quotes[idx] = {
+            ...quotes[idx],
+            status,
+            updatedAt: timestamp,
+            notes: appendedNotes,
+            signatureName: extraData.signatureName,
+            signatureDate: extraData.signatureDate || timestamp,
+            rejectionReason: extraData.rejectionReason,
+            rejectedDate: extraData.rejectedDate || timestamp
+          };
+          
+          localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(quotes));
+          return true;
+        }
+      } catch (err) {
+        console.error('LocalStorage quotation status update failed:', err);
+      }
+    }
+    return false;
   },
 };

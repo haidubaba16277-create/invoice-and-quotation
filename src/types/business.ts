@@ -14,43 +14,56 @@ export interface Customer {
 
 export interface Product {
   id: string;
-  code: string;
-  name: string;
-  description: string;
-  cost: number;
-  margin: number; // percentage
-  price: number; // cost * (1 + margin/100)
-  category: string;
-  status: 'active' | 'out_of_stock';
-  createdAt: string;
+  userId?: string;
+  productName: string;
+  sku?: string;
+  category?: string;
+  description?: string;
+  unit: string;
+  price: number;
+  taxPercentage?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface QuoteItem {
-  productId: string;
-  code: string;
-  name: string;
+  id?: string;
+  quotationId?: string;
+  productId?: string;
+  productName: string;
   quantity: number;
   unitPrice: number;
-  totalPrice: number;
+  taxPercentage: number;
+  lineTotal: number;
 }
 
 export interface Quotation {
   id: string;
+  userId?: string;
   quoteNumber: string;
   customerId: string;
-  customerName: string;
-  companyName: string;
-  date: string;
-  validUntil: string;
-  items: QuoteItem[];
+  issueDate: string;
+  expiryDate: string;
+  status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Converted';
   subtotal: number;
-  discount: number; // Flat discount Rs.
-  taxRate: number; // GST % (default 18% in Pakistan)
+  discountType: 'fixed' | 'percentage';
+  discountValue: number;
+  taxPercentage: number;
   taxAmount: number;
   grandTotal: number;
-  status: 'draft' | 'sent' | 'approved' | 'declined' | 'expired';
   notes?: string;
-  createdAt: string;
+  terms?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  
+  // Client-side UI fields for display or fallback
+  customerName?: string;
+  companyName?: string;
+  items?: QuoteItem[];
+  signatureName?: string;
+  signatureDate?: string;
+  rejectionReason?: string;
+  rejectedDate?: string;
 }
 
 export interface Invoice {
@@ -67,8 +80,12 @@ export interface Invoice {
   taxAmount: number;
   grandTotal: number;
   amountPaid: number;
-  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  discount?: number;
+  notes?: string;
+  paymentStatus?: 'Pending' | 'Partial' | 'Paid';
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'Pending' | 'Partial' | 'Paid';
   createdAt: string;
+  items?: QuoteItem[];
 }
 
 export interface CompanySettings {

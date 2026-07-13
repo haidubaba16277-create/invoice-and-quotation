@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import { UserProfile } from '../types/auth';
+import { QuoteFlowLogo } from './QuoteFlowLogo';
 
 interface AuthPagesProps {
   onAuthSuccess: (user: UserProfile) => void;
@@ -120,13 +121,11 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
         <div className="absolute bottom-10 right-10 h-[300px] w-[300px] rounded-full bg-emerald-600/20 blur-3xl" />
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-400 to-indigo-500 text-white shadow-lg shadow-indigo-500/30">
-              <Sparkles className="h-5.5 w-5.5" />
-            </div>
+          <div className="flex items-center gap-3.5">
+            <QuoteFlowLogo size={46} className="bg-slate-950/20 p-1 rounded-2xl border border-slate-800/40" />
             <div>
-              <span className="font-sans text-xl font-extrabold tracking-tight">QuoteFlow <span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">PK</span></span>
-              <p className="font-mono text-[9px] tracking-widest text-slate-400 uppercase">Phase 1 Dev</p>
+              <span className="font-sans text-[22px] font-black tracking-tight text-white leading-none">QuoteFlow <span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">PK</span></span>
+              <p className="font-sans text-[9px] font-bold text-indigo-400 mt-1 leading-none tracking-tight uppercase">Quotes That Flow, Business That Grows</p>
             </div>
           </div>
         </div>
@@ -158,8 +157,8 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
                 <CheckCircle2 className="h-4 w-4" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold">Supabase Auth Router</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Seamless transition between actual Supabase schemas and standalone local sandboxes.</p>
+                <h4 className="text-sm font-semibold">Secure Database Access</h4>
+                <p className="text-xs text-slate-400 mt-0.5">All customer databases, item profiles, and setting control modules are securely encrypted.</p>
               </div>
             </div>
           </div>
@@ -181,7 +180,7 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
           <div className="text-center">
             <h3 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
               {mode === 'login' && 'Sign in to your account'}
-              {mode === 'register' && 'Create your SaaS workspace'}
+              {mode === 'register' && 'Create your QuoteFlow workspace'}
               {mode === 'forgot' && 'Reset your password'}
             </h3>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -223,22 +222,22 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
 
           {/* Database Configuration Warning/Info */}
           {!isSupabaseConfigured && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/30 dark:bg-amber-950/20">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-950/20 dark:bg-indigo-950/10">
               <div className="flex gap-3">
-                <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <Sparkles className="h-5 w-5 text-indigo-500 dark:text-sky-400 shrink-0 mt-0.5" />
                 <div>
-                  <h5 className="text-xs font-bold text-amber-800 dark:text-amber-300">Running in Local Demo Mode</h5>
-                  <p className="mt-1 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400/90">
-                    Supabase environment keys are not configured. Sign up or log in using any email, or click below to load pre-populated demo credentials!
+                  <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">QuoteFlow PK Demo Portal</h5>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400/95">
+                    Experience the complete SaaS platform in Sandbox mode! Sign in with your email or use the one-click credential loader below to view.
                   </p>
                   {mode === 'login' && (
                     <button
                       type="button"
                       onClick={loadDemoUser}
-                      className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1 text-[10px] font-bold text-white shadow-xs hover:bg-amber-700 transition-colors"
+                      className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-[10px] font-bold text-white shadow-xs hover:bg-indigo-700 transition-colors"
                     >
                       <Database className="h-3 w-3" />
-                      Auto-fill Demo Credentials
+                      One-Click Demo Login
                     </button>
                   )}
                 </div>
@@ -368,7 +367,7 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
                   <>
                     <span>
                       {mode === 'login' && 'Sign In to Workspace'}
-                      {mode === 'register' && 'Deploy SaaS Workspace'}
+                      {mode === 'register' && 'Deploy QuoteFlow Workspace'}
                       {mode === 'forgot' && 'Send Recovery Instructions'}
                     </span>
                     <ArrowRight className="h-4.5 w-4.5" />
@@ -376,6 +375,13 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
                 )}
               </button>
             </form>
+
+            {/* Form Bottom Footer */}
+            <div className="mt-6 text-center text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center justify-center gap-1.5 uppercase tracking-wider">
+              <span>SYSTEM ONLINE</span>
+              <span>•</span>
+              <span>VERSION 1.0</span>
+            </div>
           </div>
         </div>
       </div>
