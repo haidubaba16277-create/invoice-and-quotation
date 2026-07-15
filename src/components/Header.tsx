@@ -30,15 +30,15 @@ export function Header({ onToggleSidebar, user, isSupabaseConnected, onNavigate 
     {
       id: 1,
       title: 'Welcome to QuoteFlow PK',
-      desc: 'Workspace loaded successfully. Supabase dynamic router initialized.',
+      desc: 'Workspace loaded successfully. Supabase connection active.',
       time: 'Just now',
       unread: true,
     },
     {
       id: 2,
-      title: 'Sandbox Engine Active',
-      desc: 'All features run in secure local sandbox. To connect live DB, visit settings.',
-      time: '5 mins ago',
+      title: 'Starter Plan Active',
+      desc: 'You are currently on the Starter Plan. Access to all core modules enabled.',
+      time: 'Just now',
       unread: false,
     }
   ];

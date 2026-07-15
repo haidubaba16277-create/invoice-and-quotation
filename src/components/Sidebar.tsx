@@ -135,6 +135,20 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
               </button>
             </nav>
 
+            {/* Owner Portal access */}
+            {user && (user.role === 'owner' || user.email.toLowerCase().includes('admin')) && (
+              <button
+                onClick={() => {
+                  window.history.pushState({}, '', '/admin');
+                  window.dispatchEvent(new Event('popstate'));
+                }}
+                className="group flex w-full items-center gap-3 rounded-xl bg-slate-900 px-4 py-3.5 text-xs font-black text-white hover:opacity-90 transition-all shadow-lg dark:bg-white dark:text-slate-950"
+              >
+                <Lock className="h-4.5 w-4.5 text-rose-400 dark:text-indigo-600 animate-pulse" />
+                <span>Platform Admin Portal</span>
+              </button>
+            )}
+
             {/* Profile Bar */}
             {user && (
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50/50 p-3.5 dark:border-slate-900 dark:bg-slate-950/50">

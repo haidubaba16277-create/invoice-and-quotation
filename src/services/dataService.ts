@@ -237,17 +237,18 @@ export const dataService = {
 
   // Initialize and seed local storage if empty
   initializeLocalStorage() {
+    const isCleared = localStorage.getItem('quoteflow_dummy_cleared') === 'true';
     if (!localStorage.getItem(CUSTOMERS_KEY)) {
-      localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(DEFAULT_CUSTOMERS));
+      localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(isCleared ? [] : DEFAULT_CUSTOMERS));
     }
     if (!localStorage.getItem(PRODUCTS_KEY)) {
-      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEFAULT_PRODUCTS));
+      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(isCleared ? [] : DEFAULT_PRODUCTS));
     }
     if (!localStorage.getItem(QUOTATIONS_KEY)) {
-      localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(DEFAULT_QUOTATIONS));
+      localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(isCleared ? [] : DEFAULT_QUOTATIONS));
     }
     if (!localStorage.getItem(INVOICES_KEY)) {
-      localStorage.setItem(INVOICES_KEY, JSON.stringify(DEFAULT_INVOICES));
+      localStorage.setItem(INVOICES_KEY, JSON.stringify(isCleared ? [] : DEFAULT_INVOICES));
     }
     if (!localStorage.getItem(COMPANY_SETTINGS_KEY)) {
       localStorage.setItem(COMPANY_SETTINGS_KEY, JSON.stringify(DEFAULT_COMPANY_SETTINGS));

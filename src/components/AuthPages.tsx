@@ -10,8 +10,7 @@ import {
   ShieldAlert, 
   HelpCircle,
   Eye,
-  EyeOff,
-  Database
+  EyeOff
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import { UserProfile } from '../types/auth';
@@ -30,6 +29,7 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
   // Form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
   
@@ -42,6 +42,7 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
   const resetForm = () => {
     setEmail('');
     setPassword('');
+    setConfirmPassword('');
     setFullName('');
     setCompanyName('');
     setError(null);
@@ -61,11 +62,14 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
 
     try {
       if (mode === 'register') {
-        if (!email || !password || !fullName || !companyName) {
+        if (!email || !password || !confirmPassword || !fullName || !companyName) {
           throw new Error('Please fill in all fields to register.');
         }
         if (password.length < 6) {
           throw new Error('Password must be at least 6 characters.');
+        }
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match.');
         }
 
         const user = await authService.signUp(email, password, fullName, companyName);
@@ -91,23 +95,13 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
         }
 
         await authService.resetPassword(email);
-        setSuccessMessage(
-          isSupabaseConfigured 
-            ? 'Password recovery email sent! Check your inbox for details.' 
-            : 'Password recovery simulated! In a live Supabase environment, an email will be delivered to this address.'
-        );
+        setSuccessMessage('Password recovery email sent! Check your inbox for details.');
       }
     } catch (err: any) {
       setError(err.message || 'An unexpected authentication error occurred.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadDemoUser = () => {
-    setEmail('demo@quoteflow.pk');
-    setPassword('password123');
-    setError(null);
   };
 
   return (
@@ -220,31 +214,6 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
             </p>
           </div>
 
-          {/* Database Configuration Warning/Info */}
-          {!isSupabaseConfigured && (
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-950/20 dark:bg-indigo-950/10">
-              <div className="flex gap-3">
-                <Sparkles className="h-5 w-5 text-indigo-500 dark:text-sky-400 shrink-0 mt-0.5" />
-                <div>
-                  <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">QuoteFlow PK Demo Portal</h5>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400/95">
-                    Experience the complete SaaS platform in Sandbox mode! Sign in with your email or use the one-click credential loader below to view.
-                  </p>
-                  {mode === 'login' && (
-                    <button
-                      type="button"
-                      onClick={loadDemoUser}
-                      className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-[10px] font-bold text-white shadow-xs hover:bg-indigo-700 transition-colors"
-                    >
-                      <Database className="h-3 w-3" />
-                      One-Click Demo Login
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Core Auth Glass Card */}
           <div className="rounded-2xl border border-slate-200 bg-white/70 p-8 shadow-xl backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/60">
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -260,26 +229,9 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
                 </div>
               )}
 
-              {/* Full Name & Company Name (SignUp Mode Only) */}
+              {/* Company Name & Owner Name (SignUp Mode Only) */}
               {mode === 'register' && (
                 <>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Full Name
-                    </label>
-                    <div className="relative mt-1.5">
-                      <User className="absolute top-3 left-3 h-4.5 w-4.5 text-slate-400" />
-                      <input
-                        type="text"
-                        required
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="e.g. Hammad Qureshi"
-                        className="h-10.5 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-medium outline-hidden ring-indigo-500/20 transition-all focus:border-indigo-500 focus:ring-4 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                       Company Name
@@ -292,6 +244,23 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
                         placeholder="e.g. Qureshi Traders Ltd"
+                        className="h-10.5 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-medium outline-hidden ring-indigo-500/20 transition-all focus:border-indigo-500 focus:ring-4 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Owner Name
+                    </label>
+                    <div className="relative mt-1.5">
+                      <User className="absolute top-3 left-3 h-4.5 w-4.5 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="e.g. Hammad Qureshi"
                         className="h-10.5 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-medium outline-hidden ring-indigo-500/20 transition-all focus:border-indigo-500 focus:ring-4 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                       />
                     </div>
@@ -351,6 +320,26 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
                     >
                       {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Confirm Password (SignUp Mode Only) */}
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Confirm Password
+                  </label>
+                  <div className="relative mt-1.5">
+                    <Lock className="absolute top-3 left-3 h-4.5 w-4.5 text-slate-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="h-10.5 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-11 text-xs font-medium outline-hidden ring-indigo-500/20 transition-all focus:border-indigo-500 focus:ring-4 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                    />
                   </div>
                 </div>
               )}
