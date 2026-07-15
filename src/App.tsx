@@ -45,7 +45,8 @@ function AppContent() {
     // Path check on initial mount
     const checkPath = () => {
       const path = window.location.pathname;
-      if (path.startsWith('/admin')) {
+      const hash = window.location.hash;
+      if (path.startsWith('/admin') || hash.startsWith('#/admin') || hash === '#admin') {
         setIsAdminArea(true);
       } else {
         setIsAdminArea(false);
@@ -54,6 +55,7 @@ function AppContent() {
 
     checkPath();
     window.addEventListener('popstate', checkPath);
+    window.addEventListener('hashchange', checkPath);
 
     // Detect public quotation views from path, search, or hash parameters
     const checkPublicQuoteLink = () => {
@@ -116,6 +118,7 @@ function AppContent() {
 
     return () => {
       window.removeEventListener('popstate', checkPath);
+      window.removeEventListener('hashchange', checkPath);
     };
   }, []);
 
