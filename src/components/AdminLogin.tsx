@@ -22,12 +22,38 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
     setLoading(true);
 
     try {
-      // Master offline bypass check so standard admin@quoteflow.pk / admin123 always works
-      if (email.toLowerCase() === 'admin@quoteflow.pk' && password === 'admin123') {
+      // Load custom admin credentials from cached settings if available
+      let customEmail = 'admin@quoteflow.pk';
+      let customPassword = 'admin123';
+      try {
+        const cachedSettingsStr = localStorage.getItem('quoteflow_admin_settings');
+        if (cachedSettingsStr) {
+          const settings = JSON.parse(cachedSettingsStr);
+          if (settings.adminCustomEmail) {
+            customEmail = settings.adminCustomEmail.trim().toLowerCase();
+          }
+          if (settings.adminCustomPassword) {
+            customPassword = settings.adminCustomPassword.trim();
+          }
+        }
+      } catch (e) {
+        console.error('Error loading custom admin credentials:', e);
+      }
+
+      const inputEmail = email.trim().toLowerCase();
+      const inputPassword = password.trim();
+
+      // Determine if they are intentionally choosing the Sandbox account
+      const isSandboxCreds = 
+        (inputEmail === customEmail.toLowerCase() && inputPassword === customPassword) ||
+        (inputEmail === 'admin@quoteflow.pk' && inputPassword === 'admin123');
+
+      if (isSandboxCreds) {
+        // Safe offline sandbox credential check
         const mockOwner: UserProfile = {
           id: 'admin-sandbox',
           email: email,
-          fullName: 'Owner Admin',
+          fullName: 'Owner Admin (Sandbox)',
           companyName: 'QuoteFlow PK Owner',
           createdAt: new Date().toISOString(),
           plan: 'Enterprise',
@@ -38,8 +64,8 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
       }
 
       if (!isSupabaseConfigured) {
-        // Safe offline sandbox credential check for demo capability
-        if (email.toLowerCase().includes('admin') && password === 'admin123') {
+        // If Supabase is not configured, deny entry for non-sandbox emails
+        if (inputEmail.includes('admin')) {
           const mockOwner: UserProfile = {
             id: 'admin-sandbox',
             email: email,
@@ -51,15 +77,24 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
           };
           onLoginSuccess(mockOwner);
         } else {
-          throw new Error('Sandbox Access Denied. For offline demo mode, use email "admin@quoteflow.pk" and password "admin123"');
+          throw new Error(`Sandbox Access Denied. For offline demo mode, use email "${customEmail}" and password "${customPassword}"`);
         }
       } else {
         // Live Supabase Authentication
         const session = await authService.signIn(email, password);
         
         // Safety guard checks
-        if (session.user.role === 'owner' || session.user.email.toLowerCase().includes('admin')) {
-          onLoginSuccess(session.user);
+        const isOwner = 
+          session.user.role === 'owner' || 
+          session.user.email.toLowerCase().includes('admin') ||
+          session.user.email.toLowerCase() === 'haidubaba16277@gmail.com';
+
+        if (isOwner) {
+          const verifiedOwner: UserProfile = {
+            ...session.user,
+            role: 'owner'
+          };
+          onLoginSuccess(verifiedOwner);
         } else {
           await authService.signOut();
           throw new Error('Access Denied: This area is restricted to the SaaS Platform Owner only. Your customer credentials are not authorized.');
@@ -101,9 +136,9 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
           <div className="flex gap-2.5">
             <Key className="h-4.5 w-4.5 text-sky-400 mt-0.5 shrink-0" />
             <div>
-              <h5 className="text-xs font-bold text-slate-200">Admin Quick Access</h5>
+              <h5 className="text-xs font-bold text-slate-200">Admin Quick Access (Sandbox Mode)</h5>
               <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                Click below to instantly load the master admin credentials or log in directly to the command console.
+                Use these buttons for local sandbox testing (isolated from Supabase). For production mode, sign in below with your registered owner email (<span className="text-slate-200">haidubaba16277@gmail.com</span>).
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
                 <button
@@ -111,7 +146,7 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
                   onClick={loadDemoOwner}
                   className="rounded-lg bg-sky-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-sky-700 transition-colors"
                 >
-                  Auto-Fill Credentials
+                  Auto-Fill Demo Credentials
                 </button>
                 <button
                   type="button"
@@ -119,7 +154,7 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
                     const mockOwner: UserProfile = {
                       id: 'admin-sandbox',
                       email: 'admin@quoteflow.pk',
-                      fullName: 'Owner Admin',
+                      fullName: 'Owner Admin (Sandbox)',
                       companyName: 'QuoteFlow PK Owner',
                       createdAt: new Date().toISOString(),
                       plan: 'Enterprise',
@@ -129,7 +164,7 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
                   }}
                   className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-1.5 text-[10px] font-black text-white hover:opacity-90 transition-all"
                 >
-                  One-Click Login
+                  One-Click Sandbox Login
                 </button>
               </div>
             </div>

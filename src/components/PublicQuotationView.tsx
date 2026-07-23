@@ -40,6 +40,8 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
 
+  const isExpired = quotation?.expiryDate ? new Date(quotation.expiryDate) < new Date() : false;
+
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -53,7 +55,14 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
         dataService.getCompanySettings()
       ]);
       setQuotation(quote);
-      setCompanySettings(settings);
+      if ((quote as any)?.companySettings) {
+        setCompanySettings({ ...settings, ...(quote as any).companySettings });
+      } else {
+        setCompanySettings(settings);
+      }
+      if (quote) {
+        await dataService.logQuotationActivity(quote.id, 'Quotation Viewed', 'Client accessed and viewed the public quotation portal.');
+      }
     } catch (err) {
       console.error('Failed to load public quotation page:', err);
       showToast('Could not load quotation details from database.', 'error');
@@ -68,7 +77,10 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
     }
   }, [quoteNumber]);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (quotation) {
+      await dataService.logQuotationActivity(quotation.id, 'Quotation Downloaded', 'Client printed or saved quotation as PDF.');
+    }
     window.print();
   };
 
@@ -82,10 +94,15 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
     setIsSubmittingApproval(true);
     try {
       const timestamp = new Date().toISOString();
-      const success = await dataService.updatePublicQuotationStatus(quotation.id, 'Accepted', {
-        signatureName: signerName.trim(),
-        signatureDate: timestamp
-      });
+      const success = await dataService.updatePublicQuotationStatus(
+        quotation.id, 
+        'Accepted', 
+        {
+          signatureName: signerName.trim(),
+          signatureDate: timestamp
+        },
+        quotation
+      );
 
       if (success) {
         showToast('Digital signature registered. Proposal successfully Accepted!', 'success');
@@ -114,10 +131,15 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
     setIsSubmittingRejection(true);
     try {
       const timestamp = new Date().toISOString();
-      const success = await dataService.updatePublicQuotationStatus(quotation.id, 'Rejected', {
-        rejectionReason: rejectionReason.trim(),
-        rejectedDate: timestamp
-      });
+      const success = await dataService.updatePublicQuotationStatus(
+        quotation.id, 
+        'Rejected', 
+        {
+          rejectionReason: rejectionReason.trim(),
+          rejectedDate: timestamp
+        },
+        quotation
+      );
 
       if (success) {
         showToast('Feedback recorded. Proposal status marked as Rejected.', 'success');
@@ -269,7 +291,7 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
           </button>
 
           {/* Accept / Reject interactions if not already processed */}
-          {quotation.status !== 'Accepted' && quotation.status !== 'Converted' && quotation.status !== 'Rejected' ? (
+          {quotation.status !== 'Accepted' && quotation.status !== 'Converted' && quotation.status !== 'Rejected' && !isExpired ? (
             <>
               <button
                 onClick={() => setIsRejectModalOpen(true)}
@@ -291,7 +313,11 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
                 ? 'border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-950/20 dark:bg-emerald-950/30 dark:text-emerald-400'
                 : 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-950/20 dark:bg-rose-950/30 dark:text-rose-400'
             }`}>
-              {quotation.status === 'Converted' ? 'Accepted & Invoiced' : quotation.status}
+              {quotation.status === 'Converted' 
+                ? 'Accepted & Invoiced' 
+                : isExpired 
+                  ? 'Expired' 
+                  : quotation.status}
             </span>
           )}
         </div>
@@ -301,6 +327,14 @@ export function PublicQuotationView({ quoteNumber, onBackToApp }: PublicQuotatio
       {/* MAIN DOCUMENT PAGE */}
       <div className="bg-white text-slate-900 p-8 sm:p-12 rounded-2xl border border-slate-200 max-w-4xl mx-auto shadow-sm print:shadow-none print:border-none print:p-0 font-sans print:bg-transparent">
         
+        {/* Expiration alert banner */}
+        {isExpired && (
+          <div className="mb-6 p-4 rounded-xl border border-rose-200 bg-rose-50/70 text-rose-800 text-xs font-semibold flex items-center gap-2 print:hidden animate-fade-in">
+            <AlertCircle className="h-4.5 w-4.5 text-rose-500 shrink-0" />
+            <span>This quotation has expired on {new Date(quotation.expiryDate).toLocaleDateString()} and is no longer valid for acceptance. Please request an updated proposal.</span>
+          </div>
+        )}
+
         {/* Header Brand */}
         <div className="flex flex-col sm:flex-row justify-between gap-6 border-b border-slate-200 pb-8">
           <div className="space-y-2">

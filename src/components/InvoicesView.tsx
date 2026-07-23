@@ -26,15 +26,18 @@ import {
 import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
 import { Invoice, Customer, CompanySettings, QuoteItem } from '../types/business';
+import { UserProfile } from '../types/auth';
+import { isSubscriptionExpired } from '../lib/subscription';
 
 interface InvoicesViewProps {
   isSupabaseConnected: boolean;
+  user: UserProfile | null;
 }
 
 type SortField = 'invoiceNumber' | 'grandTotal' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-export function InvoicesView({ isSupabaseConnected }: InvoicesViewProps) {
+export function InvoicesView({ isSupabaseConnected, user }: InvoicesViewProps) {
   // Application Data States
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);

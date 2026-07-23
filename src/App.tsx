@@ -10,7 +10,10 @@ import { InvoicesView } from './components/InvoicesView';
 import { PublicQuotationView } from './components/PublicQuotationView';
 import { SettingsView } from './components/SettingsView';
 import { ReportsView } from './components/ReportsView';
+import { PricingView } from './components/PricingView';
+import { BillingView } from './components/BillingView';
 import { authService } from './services/authService';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { UserProfile } from './types/auth';
 import { Sparkles, Loader2, ShieldAlert } from 'lucide-react';
 import { QuoteFlowLogo } from './components/QuoteFlowLogo';
@@ -23,6 +26,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
   const [publicQuoteNumber, setPublicQuoteNumber] = useState<string | null>(null);
+  const [showPricing, setShowPricing] = useState(false);
   
   // Admin System States
   const [isAdminArea, setIsAdminArea] = useState(false);
@@ -33,8 +37,13 @@ function AppContent() {
     window.history.pushState({}, '', path);
     if (path.startsWith('/admin')) {
       setIsAdminArea(true);
+      setShowPricing(false);
+    } else if (path.startsWith('/pricing')) {
+      setIsAdminArea(false);
+      setShowPricing(true);
     } else {
       setIsAdminArea(false);
+      setShowPricing(false);
     }
   };
 
@@ -48,8 +57,13 @@ function AppContent() {
       const hash = window.location.hash;
       if (path.startsWith('/admin') || hash.startsWith('#/admin') || hash === '#admin') {
         setIsAdminArea(true);
+        setShowPricing(false);
+      } else if (path.startsWith('/pricing') || hash === '#pricing' || hash === '#/pricing') {
+        setShowPricing(true);
+        setIsAdminArea(false);
       } else {
         setIsAdminArea(false);
+        setShowPricing(false);
       }
     };
 
@@ -59,12 +73,18 @@ function AppContent() {
 
     // Detect public quotation views from path, search, or hash parameters
     const checkPublicQuoteLink = () => {
-      // 1. Check pathname (e.g. /q/QT-2026-001)
+      // 1. Check pathname (e.g. /q/QT-2026-001 or /quote/public/token)
       const path = window.location.pathname;
       if (path.startsWith('/q/')) {
         const quoteNum = path.substring(3);
         if (quoteNum) {
           setPublicQuoteNumber(decodeURIComponent(quoteNum));
+          return true;
+        }
+      } else if (path.startsWith('/quote/public/')) {
+        const token = path.substring(14);
+        if (token) {
+          setPublicQuoteNumber(decodeURIComponent(token));
           return true;
         }
       }
@@ -77,12 +97,18 @@ function AppContent() {
         return true;
       }
 
-      // 3. Check hash routes (e.g. #/q/QT-2026-001 or #q=QT-2026-001)
+      // 3. Check hash routes (e.g. #/q/QT-2026-001 or #/quote/public/token)
       const hash = window.location.hash;
       if (hash.startsWith('#/q/')) {
         const quoteNum = hash.substring(4);
         if (quoteNum) {
           setPublicQuoteNumber(decodeURIComponent(quoteNum));
+          return true;
+        }
+      } else if (hash.startsWith('#/quote/public/')) {
+        const token = hash.substring(15);
+        if (token) {
+          setPublicQuoteNumber(decodeURIComponent(token));
           return true;
         }
       } else if (hash.startsWith('#q=')) {
@@ -102,7 +128,23 @@ function AppContent() {
       try {
         const session = await authService.getSession();
         if (session) {
-          setUser(session.user);
+          let activeUser = session.user;
+          // Auto suspension and Expiry date enforcement system
+          if (
+            activeUser.subscription_status !== 'Expired' &&
+            activeUser.subscription_status !== 'Suspended' &&
+            activeUser.trial_ends_at &&
+            Date.now() > new Date(activeUser.trial_ends_at).getTime() &&
+            activeUser.role !== 'owner' &&
+            !activeUser.email.toLowerCase().includes('admin')
+          ) {
+            await authService.updateSubscription(activeUser.id, activeUser.plan || 'Trial', 'Expired', 0);
+            const fresh = await authService.getSession();
+            if (fresh) {
+              activeUser = fresh.user;
+            }
+          }
+          setUser(activeUser);
           if (window.location.pathname === '/login') {
             window.history.replaceState({}, '', '/');
           }
@@ -121,6 +163,106 @@ function AppContent() {
       window.removeEventListener('hashchange', checkPath);
     };
   }, []);
+
+  // Real-time polling to synchronize user subscription/profile updates without manual refresh
+  useEffect(() => {
+    if (!user?.id) return;
+    if (originalAdminUser) return; // Skip polling when impersonating a customer to prevent session state pollution
+
+    // Do not poll if the logged-in user is an admin/owner to avoid redundant checks
+    const isOwner = user.role === 'owner' || user.email.toLowerCase().includes('admin');
+    if (isOwner) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const freshSession = await authService.getSession();
+        if (freshSession && freshSession.user) {
+          const freshUser = freshSession.user;
+          // Compare relevant fields using primitive properties to prevent unnecessary state triggers and re-renders
+          if (
+            freshUser.plan !== user.plan ||
+            freshUser.selected_plan !== user.selected_plan ||
+            freshUser.subscription_status !== user.subscription_status ||
+            freshUser.status !== user.status ||
+            freshUser.trial_ends_at !== user.trial_ends_at
+          ) {
+            console.log('Real-Time Sync: Subscription update detected!', freshUser);
+            setUser(freshUser);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to auto-refresh live session data:', err);
+      }
+    }, 4000); // 4 seconds polling is highly responsive and database-friendly
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [user?.id, user?.plan, user?.selected_plan, user?.subscription_status, user?.status, user?.trial_ends_at, originalAdminUser]);
+
+  // Immediately synchronize parent session state on subscription updates
+  useEffect(() => {
+    const handleSubUpdated = async () => {
+      if (originalAdminUser) {
+        // When impersonating, refresh the customer's profile live from Supabase or localStorage
+        try {
+          const userId = user?.id;
+          if (userId) {
+            let freshCustomer = { ...user };
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+            if (isSupabaseConfigured && supabase && isUuid) {
+              const [profileRes, subRes] = await Promise.all([
+                supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+                supabase.from('subscriptions').select('*').eq('user_id', userId).maybeSingle()
+              ]);
+              if (profileRes && profileRes.data) {
+                freshCustomer.plan = profileRes.data.current_plan || freshCustomer.plan;
+                freshCustomer.selected_plan = profileRes.data.current_plan || freshCustomer.selected_plan;
+                freshCustomer.subscription_status = profileRes.data.subscription_status || freshCustomer.subscription_status;
+              }
+              if (subRes && subRes.data) {
+                freshCustomer.status = subRes.data.status === 'Active' ? 'active' : subRes.data.status?.toLowerCase() || freshCustomer.status;
+                freshCustomer.plan = subRes.data.plan || freshCustomer.plan;
+                if (subRes.data.expiry_date) {
+                  freshCustomer.trial_ends_at = new Date(subRes.data.expiry_date).toISOString();
+                }
+              }
+            } else {
+              const cachedUsersStr = localStorage.getItem('quoteflow_admin_users') || '[]';
+              const users = JSON.parse(cachedUsersStr);
+              const matched = users.find((u: any) => u.id === userId);
+              if (matched) {
+                freshCustomer = { ...freshCustomer, ...matched };
+              }
+            }
+            setUser(freshCustomer as UserProfile);
+          }
+        } catch (e) {
+          console.error('Failed to sync impersonated customer session on event:', e);
+        }
+        return;
+      }
+
+      try {
+        const freshSession = await authService.getSession();
+        if (freshSession && freshSession.user) {
+          console.log('Immediate parent session sync on event:', freshSession.user);
+          setUser(freshSession.user);
+        }
+      } catch (e) {
+        console.error('Failed to sync parent session on event:', e);
+      }
+    };
+
+    window.addEventListener('subscription-updated', handleSubUpdated);
+    window.addEventListener('payments-updated', handleSubUpdated);
+    window.addEventListener('storage', handleSubUpdated);
+    return () => {
+      window.removeEventListener('subscription-updated', handleSubUpdated);
+      window.removeEventListener('payments-updated', handleSubUpdated);
+      window.removeEventListener('storage', handleSubUpdated);
+    };
+  }, [user?.id, originalAdminUser]);
 
   const handleAuthSuccess = (profile: UserProfile) => {
     setUser(profile);
@@ -225,13 +367,33 @@ function AppContent() {
   // STANDARD CUSTOMER / END-USER ENVIRONMENT
   // ========================================================
   if (!user) {
-    if (window.location.pathname !== '/login' && !publicQuoteNumber) {
+    if (showPricing) {
+      return (
+        <PricingView
+          onBackToAuth={() => {
+            setShowPricing(false);
+            navigateToPath('/login');
+          }}
+          onSelectPlan={(plan) => {
+            setShowPricing(false);
+            navigateToPath('/login');
+          }}
+          isLoggedIn={false}
+        />
+      );
+    }
+
+    if (window.location.pathname !== '/login' && window.location.pathname !== '/pricing' && !publicQuoteNumber) {
       window.history.replaceState({}, '', '/login');
     }
     return (
       <AuthPages
         onAuthSuccess={handleAuthSuccess}
         isSupabaseConfigured={isSupabaseConnected}
+        onViewPricing={() => {
+          setShowPricing(true);
+          navigateToPath('/pricing');
+        }}
       />
     );
   }
@@ -275,22 +437,38 @@ function AppContent() {
         {currentView === 'customers' && (
           <CustomersView
             isSupabaseConnected={isSupabaseConnected}
+            user={user}
           />
         )}
         {currentView === 'products' && (
           <ProductsView
             isSupabaseConnected={isSupabaseConnected}
+            user={user}
           />
         )}
         {currentView === 'quotations' && (
           <QuotationsView
             isSupabaseConnected={isSupabaseConnected}
             onNavigate={setCurrentView}
+            user={user}
           />
         )}
         {currentView === 'invoices' && (
           <InvoicesView
             isSupabaseConnected={isSupabaseConnected}
+            user={user}
+          />
+        )}
+        {currentView === 'billing' && (
+          <BillingView
+            user={user}
+            onNavigate={setCurrentView}
+            onRefreshUser={async () => {
+              const freshSession = await authService.getSession();
+              if (freshSession) {
+                setUser(freshSession.user);
+              }
+            }}
           />
         )}
         {currentView === 'settings' && (

@@ -9,7 +9,8 @@ import {
   Settings, 
   LogOut,
   Sparkles,
-  Lock
+  Lock,
+  CreditCard
 } from 'lucide-react';
 import { UserProfile } from '../types/auth';
 import { QuoteFlowLogo } from './QuoteFlowLogo';
@@ -35,6 +36,7 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
   ];
 
   const bottomItems = [
+    { id: 'billing', label: 'Billing & Plan', icon: CreditCard, isLocked: false },
     { id: 'settings', label: 'Settings & Config', icon: Settings, isLocked: false },
   ];
 
@@ -64,7 +66,7 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
           <QuoteFlowLogo size={42} className="transition-transform duration-300 hover:scale-105" />
           <div className="min-w-0">
             <h1 className="font-sans text-[17px] font-black tracking-tight text-slate-900 dark:text-white leading-none">
-              QuoteFlow <span className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">PK</span>
+              QuoteFlow <span className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">Pro</span>
             </h1>
             <p className="font-sans text-[9px] font-bold text-indigo-500 dark:text-sky-400 mt-1 leading-tight tracking-tight uppercase">
               Quotes That Flow, Business That Grows
@@ -164,6 +166,20 @@ export function Sidebar({ currentView, onNavigate, user, onSignOut, isOpen, onCl
                       {user.companyName || 'Corporate Client'}
                     </p>
                   </div>
+                </div>
+
+                {/* Subscription status badge */}
+                <div className="flex items-center justify-between border-t border-slate-200/40 dark:border-slate-800/60 pt-2 text-[10px] font-semibold">
+                  <span className="text-slate-500">Subscription:</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                    user.subscription_status === 'Active' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                    user.subscription_status === 'Trial' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
+                    user.subscription_status === 'Expired' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400' :
+                    user.subscription_status === 'Suspended' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-400' :
+                    'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400'
+                  }`}>
+                    {user.subscription_status || 'Trial'}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-200/40 dark:border-slate-800/60 pt-2 text-[9px] font-mono font-medium text-slate-400 dark:text-slate-500 tracking-wider">

@@ -24,6 +24,7 @@ import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
 import { Customer, Product, Quotation, Invoice, CompanySettings } from '../types/business';
 import { QuoteFlowLogo } from './QuoteFlowLogo';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface DashboardViewProps {
   user: UserProfile | null;
@@ -43,6 +44,208 @@ export function DashboardView({ user, isSupabaseConnected, onNavigate }: Dashboa
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
   const [recentQuotations, setRecentQuotations] = useState<Quotation[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+
+  const [liveSub, setLiveSub] = useState<{
+    subscription_status: string;
+    plan: string;
+    expiry_date: string;
+    start_date: string;
+    days_remaining: number;
+    trial_status: string;
+    trial_ends_at: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let active = true;
+    
+    async function fetchLiveSubscription() {
+      try {
+        let dbStatus = 'Trial';
+        let dbPlan = 'Trial';
+        let dbExpiryDate = '';
+        let dbStartDate = '';
+        let dbTrialStatus = 'Active';
+        let dbTrialEndsAt: string | null = null;
+
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id);
+
+        if (isSupabaseConfigured && supabase && isUuid) {
+          // Fetch live from Supabase
+          const [profileRes, subRes] = await Promise.all([
+            supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+            supabase.from('subscriptions').select('*').eq('user_id', user.id).maybeSingle()
+          ]);
+
+          if (profileRes && profileRes.data) {
+            if (profileRes.data.subscription_status) dbStatus = profileRes.data.subscription_status;
+            if (profileRes.data.current_plan) dbPlan = profileRes.data.current_plan;
+            if (profileRes.data.trial_status) dbTrialStatus = profileRes.data.trial_status;
+          }
+
+          if (subRes && subRes.data) {
+            if (subRes.data.status) dbStatus = subRes.data.status;
+            if (subRes.data.plan) dbPlan = subRes.data.plan;
+            dbStartDate = subRes.data.start_date || dbStartDate;
+            dbExpiryDate = subRes.data.expiry_date || dbExpiryDate;
+            if (subRes.data.expiry_date) {
+              try {
+                const parsedDate = new Date(subRes.data.expiry_date);
+                if (!isNaN(parsedDate.getTime())) {
+                  dbTrialEndsAt = parsedDate.toISOString();
+                }
+              } catch (dateErr) {
+                console.warn('Failed to parse subscriptions expiry_date:', subRes.data.expiry_date, dateErr);
+              }
+            }
+          }
+        }
+
+        // Always reconcile with local storage (admin users, admin subs, and verified payments)
+        const cachedUsersStr = localStorage.getItem('quoteflow_admin_users') || '[]';
+        const users = JSON.parse(cachedUsersStr);
+        const matchedUser = users.find((u: any) => 
+          u.id === user.id || 
+          (u.email && user?.email && u.email.trim().toLowerCase() === user.email.trim().toLowerCase()) ||
+          (u.fullName && user?.fullName && u.fullName.trim().toLowerCase() === user.fullName.trim().toLowerCase()) ||
+          (u.companyName && user?.companyName && u.companyName.trim().toLowerCase() === user.companyName.trim().toLowerCase())
+        );
+        if (matchedUser) {
+          if (matchedUser.subscription_status === 'Active' || matchedUser.status === 'active') {
+            dbStatus = 'Active';
+            dbPlan = (matchedUser.plan && matchedUser.plan !== 'Trial') ? matchedUser.plan : ((matchedUser.selected_plan && matchedUser.selected_plan !== 'Trial') ? matchedUser.selected_plan : dbPlan);
+            dbTrialStatus = 'Active';
+          } else if (dbStatus === 'Trial' && matchedUser.plan && matchedUser.plan !== 'Trial') {
+            dbStatus = matchedUser.subscription_status || 'Active';
+            dbPlan = matchedUser.plan;
+          }
+        }
+
+        const cachedSubsStr = localStorage.getItem('quoteflow_admin_subs') || '[]';
+        const subs = JSON.parse(cachedSubsStr);
+        const matchedSub = subs.find((s: any) => s.userId === user.id || (matchedUser && s.userId === matchedUser.id));
+        if (matchedSub && (matchedSub.status === 'active' || matchedSub.status === 'Active')) {
+          dbStatus = 'Active';
+          if (matchedSub.plan && matchedSub.plan !== 'Trial') dbPlan = matchedSub.plan;
+          dbStartDate = matchedSub.startsAt || dbStartDate;
+          dbExpiryDate = matchedSub.expiresAt || dbExpiryDate;
+        }
+
+        // Also check if any payment for this user was verified or paid!
+        const cachedPaymentsStr = localStorage.getItem('quoteflow_payments') || '[]';
+        const localPayList = JSON.parse(cachedPaymentsStr);
+        const verifiedPay = localPayList.find((p: any) => 
+          (p.userId === user.id || 
+           (matchedUser && p.userId === matchedUser.id) || 
+           (user.email && p.userName && p.userName.trim().toLowerCase() === user.fullName?.trim().toLowerCase()) ||
+           (user.fullName && p.userName && p.userName.trim().toLowerCase() === user.fullName.trim().toLowerCase())) && 
+          (p.status === 'Verified' || p.status === 'Paid')
+        );
+        if (verifiedPay) {
+          dbStatus = 'Active';
+          if (verifiedPay.plan && verifiedPay.plan !== 'Trial') {
+            dbPlan = verifiedPay.plan;
+          }
+        }
+
+        // Check local session as well
+        const localSessStr = localStorage.getItem('quoteflow_local_session');
+        if (localSessStr) {
+          try {
+            const sess = JSON.parse(localSessStr);
+            if (sess?.user && (sess.user.id === user.id || sess.user.email?.toLowerCase() === user.email?.toLowerCase())) {
+              if (sess.user.subscription_status === 'Active' || sess.user.status === 'active') {
+                dbStatus = 'Active';
+                if (sess.user.plan && sess.user.plan !== 'Trial') dbPlan = sess.user.plan;
+              }
+            }
+          } catch {}
+        }
+
+        if (dbStatus === 'Active' && (dbPlan === 'Trial' || !dbPlan)) {
+          dbPlan = 'Business Plan';
+        }
+
+        // Calculate days remaining from expiry date if active/expired, or trial_ends_at if trial
+        let daysRemaining = 30;
+        const targetDateStr = dbExpiryDate || dbTrialEndsAt || user?.trial_ends_at;
+        if (targetDateStr) {
+          try {
+            const targetTime = new Date(targetDateStr).getTime();
+            const todayTime = new Date().getTime();
+            if (!isNaN(targetTime)) {
+              daysRemaining = Math.max(0, Math.ceil((targetTime - todayTime) / (1000 * 3600 * 24)));
+            }
+          } catch (calcErr) {
+            console.error('Failed to calculate days remaining:', targetDateStr, calcErr);
+          }
+        } else if (dbStatus === 'Active') {
+          daysRemaining = 30;
+        }
+
+        const isTrialAccount = dbStatus.toUpperCase() === 'TRIAL' || dbPlan.toUpperCase() === 'TRIAL';
+        if (isTrialAccount && daysRemaining > 3) {
+          daysRemaining = 3;
+        }
+
+        if (!active) return;
+
+        // Automatically elevate owner/admin users to permanent Active Enterprise status
+        const isOwnerUser = user?.email?.toLowerCase().includes('admin') || user?.email?.toLowerCase() === 'haidubaba16277@gmail.com' || user?.role === 'owner';
+        if (isOwnerUser) {
+          dbStatus = 'Active';
+          dbPlan = 'Enterprise';
+          dbTrialStatus = 'Active';
+          dbExpiryDate = '';
+          dbTrialEndsAt = null;
+          daysRemaining = 3650; // Unlimited lifetime access
+        }
+
+        // DEBUG logging exactly as requested in Requirement 7
+        console.log('=== DASHBOARD LIVE QUERY DEBUG ===');
+        console.log('subscription_status:', dbStatus);
+        console.log('trial_status:', dbTrialStatus);
+        console.log('trial_ends_at:', dbTrialEndsAt);
+        console.log('expiry_date:', dbExpiryDate);
+        console.log('days_remaining:', daysRemaining);
+        console.log('Current Plan:', dbPlan);
+        console.log('===================================');
+
+        setLiveSub({
+          subscription_status: dbStatus,
+          plan: dbPlan,
+          expiry_date: dbExpiryDate,
+          start_date: dbStartDate,
+          days_remaining: daysRemaining,
+          trial_status: dbTrialStatus,
+          trial_ends_at: dbTrialEndsAt
+        });
+      } catch (err) {
+        console.error('Failed to query live subscription data in Dashboard:', err);
+      }
+    }
+
+    fetchLiveSubscription();
+
+    // Fast polling interval to refresh automatically without browser reload (Requirement 6)
+    const intervalId = setInterval(fetchLiveSubscription, 3000);
+
+    const handleSubUpdated = () => {
+      fetchLiveSubscription();
+    };
+    window.addEventListener('subscription-updated', handleSubUpdated);
+    window.addEventListener('payments-updated', handleSubUpdated);
+    window.addEventListener('storage', handleSubUpdated);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+      window.removeEventListener('subscription-updated', handleSubUpdated);
+      window.removeEventListener('payments-updated', handleSubUpdated);
+      window.removeEventListener('storage', handleSubUpdated);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -87,6 +290,55 @@ export function DashboardView({ user, isSupabaseConnected, onNavigate }: Dashboa
     };
   }, []);
 
+  // Live computed subscription variables
+  const subscription_status = liveSub?.subscription_status || user?.subscription_status || 'Trial';
+  const plan = liveSub?.plan || user?.selected_plan || user?.plan || 'Trial';
+  const is_trial = subscription_status.toUpperCase() === 'TRIAL' || plan.toUpperCase() === 'TRIAL';
+  const expiry_date = liveSub?.expiry_date || '';
+  const rawDaysRemaining = liveSub !== null 
+    ? liveSub.days_remaining 
+    : Math.max(0, Math.ceil((new Date(user?.trial_ends_at || Date.now()).getTime() - Date.now()) / (1000 * 3600 * 24)));
+  const days_remaining = is_trial ? Math.min(3, rawDaysRemaining) : rawDaysRemaining;
+
+  const getBadgeStyles = (status: string) => {
+    const normStatus = status.toUpperCase();
+    if (normStatus === 'ACTIVE') {
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30';
+    } else if (normStatus === 'EXPIRED') {
+      return 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/30';
+    } else if (normStatus === 'SUSPENDED') {
+      return 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400 border border-orange-200/50 dark:border-orange-900/30';
+    } else {
+      // DEFAULT/TRIAL
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/30';
+    }
+  };
+
+  const getCardAccentStyles = (status: string) => {
+    const normStatus = status.toUpperCase();
+    if (normStatus === 'ACTIVE') {
+      return {
+        border: 'border-emerald-500',
+        iconContainer: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+      };
+    } else if (normStatus === 'EXPIRED') {
+      return {
+        border: 'border-rose-500',
+        iconContainer: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+      };
+    } else if (normStatus === 'SUSPENDED') {
+      return {
+        border: 'border-orange-500',
+        iconContainer: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
+      };
+    } else {
+      return {
+        border: 'border-amber-500',
+        iconContainer: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+      };
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -113,7 +365,7 @@ export function DashboardView({ user, isSupabaseConnected, onNavigate }: Dashboa
               QuoteFlow Portal Active
             </span>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Assalam-o-Alaikum, {user?.fullName || 'Manager'}!
+              Welcome, {user?.fullName || 'Manager'}!
             </h2>
             <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
               Welcome back to <span className="font-semibold">{companySettings?.companyName || user?.companyName || 'Corporate Client'}</span> digital workspace.
@@ -126,6 +378,85 @@ export function DashboardView({ user, isSupabaseConnected, onNavigate }: Dashboa
             <span>Create New Quotation</span>
             <ArrowRight className="h-4 w-4" />
           </button>
+        </div>
+      </GlassCard>
+
+      {/* Subscription Status Card (Requirement 4) */}
+      <GlassCard 
+        className={`p-5 overflow-hidden relative border-l-4 ${getCardAccentStyles(subscription_status).border}`} 
+        intensity="medium"
+      >
+        <div className="absolute top-0 right-0 -mr-12 -mt-12 h-36 w-36 rounded-full bg-indigo-500/5 blur-xl pointer-events-none" />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-2xl ${getCardAccentStyles(subscription_status).iconContainer}`}>
+              <CreditCard className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Subscription Status</span>
+                {subscription_status.toUpperCase() === 'ACTIVE' ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-500 border border-emerald-500/20">
+                    Active
+                  </span>
+                ) : (
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getBadgeStyles(subscription_status)}`}>
+                    {subscription_status}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium">
+                <span className="text-slate-800 dark:text-slate-200">
+                  Current Plan: <strong className="font-extrabold text-indigo-600 dark:text-sky-400">{plan}</strong>
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">•</span>
+                {subscription_status.toUpperCase() === 'ACTIVE' ? (
+                  <>
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      <Calendar className="h-4 w-4" /> Expiry Date: <strong className="font-extrabold text-slate-800 dark:text-slate-200">
+                        {expiry_date ? new Date(expiry_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Never'}
+                      </strong>
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      Renewal Date: <strong className="font-extrabold text-slate-800 dark:text-slate-200">
+                        {expiry_date ? new Date(expiry_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Never'}
+                      </strong>
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      Days Until Expiry: <strong className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                        {days_remaining} days
+                      </strong>
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4" /> Days Remaining: <strong className="font-extrabold text-amber-600 dark:text-amber-400">
+                      {days_remaining} days
+                    </strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          {subscription_status.toUpperCase() === 'ACTIVE' ? (
+            <button
+              onClick={() => onNavigate('billing')}
+              className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100 shadow-md hover:scale-[1.01]"
+            >
+              Renew Plan
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => onNavigate('billing')}
+              className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer bg-amber-600 text-white hover:bg-amber-500 shadow-md shadow-amber-600/15 hover:scale-[1.01]"
+            >
+              Upgrade Now
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </GlassCard>
 
@@ -434,7 +765,7 @@ export function DashboardView({ user, isSupabaseConnected, onNavigate }: Dashboa
                     Active Bank Account
                   </h5>
                   <div className="text-[11px] space-y-1 text-slate-500 dark:text-slate-400 leading-normal">
-                    <p className="font-semibold text-slate-800 dark:text-slate-300">{companySettings.bankName || 'HBL Pakistan'}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-300">{companySettings.bankName || 'Standard Chartered Bank'}</p>
                     <p>Title: <span className="font-medium text-slate-700 dark:text-slate-300">{companySettings.accountTitle || 'N/A'}</span></p>
                     <p className="font-mono text-[10px] tracking-wide">Account: {companySettings.accountNumber || 'N/A'}</p>
                   </div>

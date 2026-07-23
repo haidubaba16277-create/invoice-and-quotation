@@ -25,15 +25,18 @@ import {
 import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
 import { Customer } from '../types/business';
+import { UserProfile } from '../types/auth';
+import { isSubscriptionExpired, checkPlanLimits } from '../lib/subscription';
 
 interface CustomersViewProps {
   isSupabaseConnected: boolean;
+  user: UserProfile | null;
 }
 
 type SortField = 'name' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
+export function CustomersView({ isSupabaseConnected, user }: CustomersViewProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -212,6 +215,17 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
   // Save Customer (Create/Update)
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingCustomer) {
+      if (isSubscriptionExpired(user)) {
+        alert('Your free trial has ended. Please upgrade your subscription to add new customers.');
+        return;
+      }
+      const limitCheck = await checkPlanLimits(user, 'customers');
+      if (limitCheck.reached) {
+        alert(limitCheck.message);
+        return;
+      }
+    }
     if (!validateForm()) return;
 
     setFormLoading(true);
@@ -299,8 +313,19 @@ export function CustomersView({ isSupabaseConnected }: CustomersViewProps) {
 
         <button
           type="button"
-          onClick={() => openFormModal()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 hover:opacity-95 focus:outline-hidden transition-all shrink-0 active:scale-98"
+          onClick={() => {
+            if (isSubscriptionExpired(user)) {
+              alert('Your free trial has ended. Please upgrade your subscription to add new customers.');
+              return;
+            }
+            openFormModal();
+          }}
+          disabled={isSubscriptionExpired(user)}
+          className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white shadow-md focus:outline-hidden transition-all shrink-0 active:scale-98 ${
+            isSubscriptionExpired(user)
+              ? 'bg-slate-400 dark:bg-slate-850 cursor-not-allowed opacity-50'
+              : 'bg-gradient-to-r from-sky-500 to-indigo-600 shadow-indigo-500/10 hover:opacity-95 cursor-pointer'
+          }`}
         >
           <Plus className="h-4 w-4" />
           <span>Add Customer</span>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sun, 
   Moon, 
@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { UserProfile } from '../types/auth';
+import { paymentService } from '../services/paymentService';
+import { CustomerNotification } from '../types/payment';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -25,21 +27,52 @@ interface HeaderProps {
 export function Header({ onToggleSidebar, user, isSupabaseConnected, onNavigate }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [dbNotifications, setDbNotifications] = useState<CustomerNotification[]>([]);
 
-  const notifications = [
+  useEffect(() => {
+    if (!user) return;
+    const loadNotifs = async () => {
+      try {
+        const list = await paymentService.getCustomerNotifications(user.id);
+        setDbNotifications(list);
+      } catch (err) {
+        console.error('Failed to load user notifications in header:', err);
+      }
+    };
+    loadNotifs();
+    const interval = setInterval(loadNotifs, 8000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const handleToggleNotifications = async () => {
+    const nextShow = !showNotifications;
+    setShowNotifications(nextShow);
+    if (nextShow && user) {
+      try {
+        await paymentService.markNotificationsAsRead(user.id);
+        const list = await paymentService.getCustomerNotifications(user.id);
+        setDbNotifications(list);
+      } catch (err) {
+        console.error('Failed to mark notifications as read:', err);
+      }
+    }
+  };
+
+  const displayNotifs = dbNotifications.length > 0 ? dbNotifications.map(n => ({
+    id: n.id,
+    title: n.title,
+    desc: n.message,
+    time: new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    unread: !n.read,
+    type: n.type
+  })) : [
     {
-      id: 1,
+      id: 'default-1',
       title: 'Welcome to QuoteFlow PK',
       desc: 'Workspace loaded successfully. Supabase connection active.',
       time: 'Just now',
-      unread: true,
-    },
-    {
-      id: 2,
-      title: 'Starter Plan Active',
-      desc: 'You are currently on the Starter Plan. Access to all core modules enabled.',
-      time: 'Just now',
       unread: false,
+      type: 'info'
     }
   ];
 
@@ -108,13 +141,15 @@ export function Header({ onToggleSidebar, user, isSupabaseConnected, onNavigate 
         {/* Notification Bell */}
         <div className="relative">
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={handleToggleNotifications}
             className={`flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-600 shadow-2xs transition-all hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800/80 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white ${
               showNotifications ? 'bg-slate-50 dark:bg-slate-800' : ''
             }`}
           >
             <Bell className="h-4.5 w-4.5" />
-            <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-indigo-600 dark:bg-sky-400" />
+            {displayNotifs.some(n => n.unread) && (
+              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-indigo-600 dark:bg-sky-400 animate-pulse" />
+            )}
           </button>
 
           {/* Notifications Dropdown (Glassmorphic design) */}
@@ -128,11 +163,11 @@ export function Header({ onToggleSidebar, user, isSupabaseConnected, onNavigate 
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-sm font-bold text-slate-900 dark:text-white">Notifications</span>
                   <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-950/50 dark:text-sky-400">
-                    {notifications.filter(n => n.unread).length} New
+                    {displayNotifs.filter(n => n.unread).length} New
                   </span>
                 </div>
-                <div className="mt-3 space-y-3">
-                  {notifications.map((n) => (
+                <div className="mt-3 space-y-3 max-h-60 overflow-y-auto pr-1">
+                  {displayNotifs.map((n) => (
                     <div 
                       key={n.id} 
                       className={`group relative rounded-xl p-2.5 transition-colors ${
@@ -145,7 +180,7 @@ export function Header({ onToggleSidebar, user, isSupabaseConnected, onNavigate 
                         {n.unread && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-sky-400" />}
                         {n.title}
                       </p>
-                      <p className="mt-1 text-[11px] leading-normal text-slate-500 dark:text-slate-400">
+                      <p className="mt-1 text-[11px] leading-normal text-slate-500 dark:text-slate-400 whitespace-pre-line">
                         {n.desc}
                       </p>
                       <p className="mt-2 text-[9px] font-medium text-slate-400">

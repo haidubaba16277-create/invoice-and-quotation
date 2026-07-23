@@ -365,7 +365,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                           ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
                           : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
                       }`}
-                      placeholder="e.g. QuoteFlow Pakistan"
+                      placeholder="e.g. QuoteFlow Global"
                     />
                     {validationErrors.companyName && (
                       <p className="mt-1 text-[10px] text-rose-500 font-semibold">{validationErrors.companyName}</p>
@@ -430,7 +430,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                           ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
                           : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
                       }`}
-                      placeholder="e.g. billing@quoteflow.pk"
+                      placeholder="e.g. billing@quoteflow.com"
                     />
                     {validationErrors.email && (
                       <p className="mt-1 text-[10px] text-rose-500 font-semibold">{validationErrors.email}</p>
@@ -451,7 +451,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                           ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
                           : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
                       }`}
-                      placeholder="e.g. +92 21 35123456"
+                      placeholder="e.g. +1 212 555 0199"
                     />
                     {validationErrors.phone && (
                       <p className="mt-1 text-[10px] text-rose-500 font-semibold">{validationErrors.phone}</p>
@@ -471,7 +471,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                           ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' 
                           : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/30 dark:border-slate-800'
                       }`}
-                      placeholder="e.g. https://quoteflow.pk"
+                      placeholder="e.g. https://quoteflow.com"
                     />
                     {validationErrors.website && (
                       <p className="mt-1 text-[10px] text-rose-500 font-semibold">{validationErrors.website}</p>
@@ -487,7 +487,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                       value={settings.address || ''}
                       onChange={(e) => handleInputChange('address', e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all"
-                      placeholder="Suite 402, Dolmen Mall Clifton, Karachi, Pakistan"
+                      placeholder="Suite 402, Commercial Tower, City Center"
                     />
                   </div>
                 </div>
@@ -513,7 +513,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                       value={settings.bankName || ''}
                       onChange={(e) => handleInputChange('bankName', e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all"
-                      placeholder="e.g. Habib Bank Limited (HBL)"
+                      placeholder="e.g. Standard Chartered Bank"
                     />
                   </div>
 
@@ -526,7 +526,7 @@ TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
                       value={settings.accountTitle || ''}
                       onChange={(e) => handleInputChange('accountTitle', e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white/50 px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 outline-hidden transition-all"
-                      placeholder="e.g. QuoteFlow Pakistan (Pvt) Ltd"
+                      placeholder="e.g. QuoteFlow Pro (Pvt) Ltd"
                     />
                   </div>
 

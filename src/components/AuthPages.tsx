@@ -19,11 +19,12 @@ import { QuoteFlowLogo } from './QuoteFlowLogo';
 interface AuthPagesProps {
   onAuthSuccess: (user: UserProfile) => void;
   isSupabaseConfigured: boolean;
+  onViewPricing: () => void;
 }
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProps) {
+export function AuthPages({ onAuthSuccess, isSupabaseConfigured, onViewPricing }: AuthPagesProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   
   // Form fields
@@ -118,7 +119,7 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
           <div className="flex items-center gap-3.5">
             <QuoteFlowLogo size={46} className="bg-slate-950/20 p-1 rounded-2xl border border-slate-800/40" />
             <div>
-              <span className="font-sans text-[22px] font-black tracking-tight text-white leading-none">QuoteFlow <span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">PK</span></span>
+              <span className="font-sans text-[22px] font-black tracking-tight text-white leading-none">QuoteFlow <span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">Pro</span></span>
               <p className="font-sans text-[9px] font-bold text-indigo-400 mt-1 leading-none tracking-tight uppercase">Quotes That Flow, Business That Grows</p>
             </div>
           </div>
@@ -126,7 +127,7 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
 
         <div className="relative z-10 my-auto py-12 lg:py-0">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-3.5 py-1 text-xs font-semibold text-sky-300 ring-1 ring-sky-500/20">
-            Now Live in Pakistan 🇵🇰
+            Global Enterprise Version ⚡
           </span>
           <h2 className="mt-6 text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-3xl xl:text-4xl leading-tight">
             Generate polished, professional quotes in minutes.
@@ -179,15 +180,25 @@ export function AuthPages({ onAuthSuccess, isSupabaseConfigured }: AuthPagesProp
             </h3>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               {mode === 'login' && (
-                <>
-                  Or{' '}
-                  <button 
-                    onClick={() => handleModeChange('register')}
-                    className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-sky-400 dark:hover:text-sky-300"
+                <div className="flex flex-col items-center gap-2">
+                  <span>
+                    Or{' '}
+                    <button 
+                      type="button"
+                      onClick={() => handleModeChange('register')}
+                      className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-sky-400 dark:hover:text-sky-300"
+                    >
+                      start your 3-day free trial
+                    </button>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onViewPricing}
+                    className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 hover:text-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 px-3.5 py-1 rounded-full transition-all mt-1"
                   >
-                    start your 14-day free trial
+                    View Pricing Plans
                   </button>
-                </>
+                </div>
               )}
               {mode === 'register' && (
                 <>

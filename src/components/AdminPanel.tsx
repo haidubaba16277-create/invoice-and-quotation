@@ -38,9 +38,15 @@ import {
   Globe,
   Key,
   Flame,
-  FileText
+  FileText,
+  Download,
+  ExternalLink,
+  ZoomIn
 } from 'lucide-react';
 import { UserProfile } from '../types/auth';
+import { paymentService } from '../services/paymentService';
+import { PaymentSubmission } from '../types/payment';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AdminPanelProps {
   user: UserProfile;
@@ -114,7 +120,7 @@ interface AuditLog {
 
 export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnected }: AdminPanelProps) {
   // Check if owner
-  const isOwner = user.role === 'owner' || user.email.toLowerCase().includes('admin');
+  const isOwner = user.role === 'owner' || user.email.toLowerCase().includes('admin') || user.email.toLowerCase() === 'haidubaba16277@gmail.com';
 
   // Sub-navigation tabs
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'subscriptions' | 'payments' | 'limits' | 'support' | 'settings' | 'audit'>('dashboard');
@@ -122,24 +128,26 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
   // Load SaaS records from localStorage with mock defaults for standard out of the box operational experience
   const [saasUsers, setSaasUsers] = useState<SaasUser[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [payments, setPayments] = useState<PaymentSubmission[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [systemSettings, setSystemSettings] = useState({
-    saasName: 'QuoteFlow PK',
+    saasName: 'QuoteFlow Pro',
     logoUrl: '',
-    address: 'Office 402, Eden Heights, Gulberg III, Lahore, Pakistan',
+    address: 'Office 402, Commercial Tower, City Center',
     currency: 'PKR',
-    timezone: 'Asia/Karachi',
+    timezone: 'UTC',
     taxDefault: '18',
     smtpHost: 'smtp.gmail.com',
     smtpPort: '587',
-    smtpUser: 'notifications@quoteflow.pk',
+    smtpUser: 'notifications@quoteflow.com',
     whatsappEnabled: true,
-    whatsappNumber: '+923001234567',
+    whatsappNumber: '+15551234567',
     geminiKey: '••••••••••••••••••••••••',
     openaiKey: '',
-    maintenanceMode: false
+    maintenanceMode: false,
+    adminCustomEmail: 'admin@quoteflow.com',
+    adminCustomPassword: 'admin123'
   });
 
   // Modal / forms state
@@ -155,8 +163,20 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
     password: '',
     confirmPassword: '',
     plan: 'Starter' as SaasUser['plan'],
-    trialDays: 14
+    trialDays: 3
   });
+
+  // Payments verification states
+  const [previewPayment, setPreviewPayment] = useState<PaymentSubmission | null>(null);
+  const [isScreenshotZoomed, setIsScreenshotZoomed] = useState(false);
+  const [actionPayment, setActionPayment] = useState<{ id: string; type: 'verify' | 'reject'; amount: number; customerName: string } | null>(null);
+  const [actionNotes, setActionNotes] = useState<string>('');
+
+  // Delete Payment/User state
+  const [paymentToDelete, setPaymentToDelete] = useState<PaymentSubmission | null>(null);
+  const [deleteUserOption, setDeleteUserOption] = useState<boolean>(false);
+  const [isDeletingPayment, setIsDeletingPayment] = useState<boolean>(false);
+  const [isDeletingUser, setIsDeletingUser] = useState<boolean>(false);
 
   // Notifications
   const [notif, setNotif] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -214,6 +234,63 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
     }, 1000);
   };
 
+  const handleConfirmPaymentAction = async () => {
+    if (!actionPayment) return;
+    try {
+      if (actionPayment.type === 'verify') {
+        // Pass user.id as currentOwnerId to track verification logs
+        const result = await paymentService.verifyPayment(actionPayment.id, user.id, actionNotes);
+        if (result) {
+          showToast('Payment successfully verified and subscription activated!');
+          logAudit(`Verified payment of ${actionPayment.amount} PKR for ${actionPayment.customerName}.`, '');
+          window.dispatchEvent(new CustomEvent('subscription-updated', { detail: { userId: result.userId } }));
+          window.dispatchEvent(new CustomEvent('payments-updated'));
+        } else {
+          showToast('Failed to verify payment.', 'error');
+        }
+      } else {
+        const result = await paymentService.rejectPayment(actionPayment.id, user.id, actionNotes);
+        if (result) {
+          showToast('Payment rejected successfully.');
+          logAudit(`Rejected payment of ${actionPayment.amount} PKR for ${actionPayment.customerName}. Reason: ${actionNotes}`, '');
+          window.dispatchEvent(new CustomEvent('subscription-updated', { detail: { userId: result.userId } }));
+          window.dispatchEvent(new CustomEvent('payments-updated'));
+        } else {
+          showToast('Failed to reject payment.', 'error');
+        }
+      }
+      
+      // Reload payments list in Admin Panel state
+      const updatedPayments = await paymentService.getAllPayments();
+      setPayments(updatedPayments);
+
+      // Refresh customers list immediately in local memory so UI stats/sub status sync in real time
+      const cachedUsers = localStorage.getItem('quoteflow_admin_users');
+      if (cachedUsers) {
+        setSaasUsers(JSON.parse(cachedUsers));
+      }
+
+      // Refresh subscriptions list immediately so active counters sync
+      const cachedSubs = localStorage.getItem('quoteflow_admin_subs');
+      if (cachedSubs) {
+        setSubscriptions(JSON.parse(cachedSubs));
+      }
+
+      // Refresh audit logs list immediately
+      const cachedAudit = localStorage.getItem('quoteflow_admin_audit');
+      if (cachedAudit) {
+        setAuditLogs(JSON.parse(cachedAudit));
+      }
+
+    } catch (err: any) {
+      console.error('Error executing payment action:', err);
+      showToast(err.message || 'An error occurred during verification/rejection', 'error');
+    } finally {
+      setActionPayment(null);
+      setActionNotes('');
+    }
+  };
+
   // Search & Filter state
   const [userSearch, setUserSearch] = useState('');
   const [userFilterPlan, setUserFilterPlan] = useState('all');
@@ -227,6 +304,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
   // Selected User for details
   const [selectedUser, setSelectedUser] = useState<SaasUser | null>(null);
   const [editingUser, setEditingUser] = useState<SaasUser | null>(null);
+  const [userToDelete, setUserToDelete] = useState<SaasUser | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotif({ text, type });
@@ -264,7 +342,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
     } else {
       const mockUsers: SaasUser[] = isCleared ? [] : [
         { id: 'usr-1', email: 'hamza@nexustech.pk', fullName: 'Hamza Malik', companyName: 'NexusTech Private Ltd', phone: '+92 321 8483921', plan: 'Business', status: 'active', signupDate: '2026-06-10T12:00:00Z', lastLogin: '2026-07-14T03:45:00Z', trialDays: 0, password: 'nexus_hamza99' },
-        { id: 'usr-2', email: 'marium@interact.com', fullName: 'Marium Batool', companyName: 'Interact Creative Agency', phone: '+92 333 4910294', plan: 'Starter', status: 'trial', signupDate: '2026-07-02T15:30:00Z', lastLogin: '2026-07-13T10:15:00Z', trialDays: 14, password: 'marium_creative' },
+        { id: 'usr-2', email: 'marium@interact.com', fullName: 'Marium Batool', companyName: 'Interact Creative Agency', phone: '+92 333 4910294', plan: 'Starter', status: 'trial', signupDate: '2026-07-02T15:30:00Z', lastLogin: '2026-07-13T10:15:00Z', trialDays: 3, password: 'marium_creative' },
         { id: 'usr-3', email: 'salman@giga.com.pk', fullName: 'Salman Lodhi', companyName: 'Giga Builders & Devs', phone: '+92 300 4059102', plan: 'Professional', status: 'active', signupDate: '2026-05-20T09:12:00Z', lastLogin: '2026-07-14T01:10:00Z', trialDays: 0, password: 'giga_salman123' },
         { id: 'usr-4', email: 'tayyab@fresho.pk', fullName: 'Tayyab Mahmood', companyName: 'Fresho Food Deliveries', phone: '+92 312 9049102', plan: 'Enterprise', status: 'active', signupDate: '2026-04-12T08:00:00Z', lastLogin: '2026-07-13T23:50:00Z', trialDays: 0, password: 'fresho_tayyab55' },
         { id: 'usr-5', email: 'bilal@retrofit.pk', fullName: 'Bilal Farooq', companyName: 'RetroFit Gyms & Apparel', phone: '+92 345 5029104', plan: 'Starter', status: 'expired', signupDate: '2026-06-15T11:45:00Z', lastLogin: '2026-06-29T16:20:00Z', trialDays: 0, password: 'retrofit_bilal7' },
@@ -288,19 +366,9 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
       localStorage.setItem('quoteflow_admin_subs', JSON.stringify(mockSubs));
     }
 
-    if (cachedPayments) {
-      setPayments(JSON.parse(cachedPayments));
-    } else {
-      const mockPayments: PaymentRecord[] = isCleared ? [] : [
-        { id: 'pay-1', userId: 'usr-1', userName: 'Hamza Malik', companyName: 'NexusTech Private Ltd', plan: 'Business', amount: 8500, paymentDate: '2026-07-10', method: 'JazzCash', status: 'Paid' },
-        { id: 'pay-2', userId: 'usr-3', userName: 'Salman Lodhi', companyName: 'Giga Builders & Devs', plan: 'Professional (Yearly)', amount: 48000, paymentDate: '2026-05-20', method: 'Bank Transfer', status: 'Paid' },
-        { id: 'pay-3', userId: 'usr-4', userName: 'Tayyab Mahmood', companyName: 'Fresho Food Deliveries', plan: 'Enterprise', amount: 18000, paymentDate: '2026-07-12', method: 'Stripe', status: 'Paid' },
-        { id: 'pay-4', userId: 'usr-5', userName: 'Bilal Farooq', companyName: 'RetroFit Gyms & Apparel', plan: 'Starter', amount: 2500, paymentDate: '2026-06-15', method: 'Easypaisa', status: 'Failed' },
-        { id: 'pay-5', userId: 'usr-6', userName: 'Ayesha Qureshi', companyName: 'Vivid Digital Hub', plan: 'Professional', amount: 4500, paymentDate: '2026-05-01', method: 'Manual', status: 'Paid' }
-      ];
-      setPayments(mockPayments);
-      localStorage.setItem('quoteflow_admin_payments', JSON.stringify(mockPayments));
-    }
+    paymentService.getAllPayments()
+      .then(setPayments)
+      .catch(err => console.error('Error loading payments:', err));
 
     if (cachedTickets) {
       setTickets(JSON.parse(cachedTickets));
@@ -369,7 +437,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
       startsAt: new Date().toISOString().split('T')[0],
       expiresAt: new Date(Date.now() + (newUser.trialDays || 30) * 24 * 3600 * 1000).toISOString().split('T')[0],
       paymentStatus: 'paid',
-      amount: newUser.plan === 'Starter' ? 2500 : newUser.plan === 'Professional' ? 4500 : newUser.plan === 'Business' ? 8500 : 18000
+      amount: newUser.plan === 'Professional' ? 1500 : newUser.plan === 'Business' ? 3000 : newUser.plan === 'Enterprise' ? 5000 : 1500
     };
 
     const updatedUsers = [...saasUsers, freshUser];
@@ -394,7 +462,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
       password: '',
       confirmPassword: '',
       plan: 'Starter',
-      trialDays: 14
+      trialDays: 3
     });
   };
 
@@ -426,16 +494,33 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
 
   // Impersonate customer
   const handleImpersonateUser = (target: SaasUser) => {
-    logAudit(`Initiated profile impersonation (Login-As) for customer: ${target.fullName}`, target.id);
-    showToast(`Logging in as ${target.fullName}... Redirecting.`, 'info');
+    const latestUser = saasUsers.find(u => u.id === target.id) || target;
+    const matchedSub = subscriptions.find(s => s.userId === target.id);
+    
+    const subStatus = matchedSub 
+      ? (matchedSub.status === 'active' ? 'Active' : matchedSub.status.charAt(0).toUpperCase() + matchedSub.status.slice(1))
+      : (latestUser.status === 'trial' ? 'Trial' : latestUser.status.charAt(0).toUpperCase() + latestUser.status.slice(1));
+
+    const trialEndsAt = matchedSub 
+      ? matchedSub.expiresAt 
+      : new Date(new Date(latestUser.signupDate).getTime() + (latestUser.trialDays || 3) * 24 * 3600 * 1000).toISOString();
+
+    logAudit(`Initiated profile impersonation (Login-As) for customer: ${latestUser.fullName}`, latestUser.id);
+    showToast(`Logging in as ${latestUser.fullName}... Redirecting.`, 'info');
     onImpersonate({
-      id: target.id,
-      email: target.email,
-      fullName: target.fullName,
-      companyName: target.companyName,
-      createdAt: target.signupDate,
-      plan: target.plan,
-      role: 'customer'
+      id: latestUser.id,
+      email: latestUser.email,
+      fullName: latestUser.fullName,
+      companyName: latestUser.companyName,
+      createdAt: latestUser.signupDate,
+      plan: latestUser.plan,
+      role: 'customer',
+      selected_plan: latestUser.plan,
+      subscription_status: subStatus,
+      trial_started_at: subStatus === 'Active' ? null : latestUser.signupDate,
+      trial_ends_at: subStatus === 'Active' ? null : trialEndsAt,
+      is_trial: subStatus !== 'Active',
+      trial_status: subStatus === 'Active' ? 'false' : 'Active'
     });
   };
 
@@ -449,27 +534,88 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
     showToast(`User status updated to ${updatedStatus}!`);
   };
 
-  // Delete Customer
-  const handleDeleteUser = (targetId: string, name: string) => {
-    if (!window.confirm(`Are you absolutely sure you want to delete ${name}? This will permanently wipe their company settings, clients, quotations, and bills.`)) return;
-    const updatedUsers = saasUsers.filter(u => u.id !== targetId);
-    const updatedSubs = subscriptions.filter(s => s.userId !== targetId);
-    setSaasUsers(updatedUsers);
-    setSubscriptions(updatedSubs);
-    localStorage.setItem('quoteflow_admin_users', JSON.stringify(updatedUsers));
-    localStorage.setItem('quoteflow_admin_subs', JSON.stringify(updatedSubs));
-    logAudit(`Deleted customer account and subscriptions for: ${name}`, targetId);
-    showToast('Customer wiped successfully!');
+  // Delete Customer Execution
+  const executeDeleteUser = async (targetId: string, name: string) => {
+    setIsDeletingUser(true);
+    try {
+      // 1. Remove from local state and storage
+      const updatedUsers = saasUsers.filter(u => u.id !== targetId);
+      const updatedSubs = subscriptions.filter(s => s.userId !== targetId);
+      setSaasUsers(updatedUsers);
+      setSubscriptions(updatedSubs);
+      localStorage.setItem('quoteflow_admin_users', JSON.stringify(updatedUsers));
+      localStorage.setItem('quoteflow_admin_subs', JSON.stringify(updatedSubs));
+
+      // Clean local payment records for this user
+      const localPayments = JSON.parse(localStorage.getItem('quoteflow_payments') || '[]');
+      const filteredLocalPayments = localPayments.filter((p: any) => p.userId !== targetId);
+      localStorage.setItem('quoteflow_payments', JSON.stringify(filteredLocalPayments));
+
+      const adminPayments = JSON.parse(localStorage.getItem('quoteflow_admin_payments') || '[]');
+      const filteredAdminPayments = adminPayments.filter((p: any) => p.userId !== targetId);
+      localStorage.setItem('quoteflow_admin_payments', JSON.stringify(filteredAdminPayments));
+
+      // 2. Wipe from Supabase database tables
+      if (isSupabaseConfigured && supabase) {
+        try {
+          await supabase.from('profiles').delete().eq('id', targetId);
+          await supabase.from('subscriptions').delete().eq('user_id', targetId);
+          await supabase.from('payments').delete().eq('user_id', targetId);
+          await supabase.from('customer_notifications').delete().eq('user_id', targetId);
+          await supabase.from('customers').delete().eq('user_id', targetId);
+          await supabase.from('products').delete().eq('user_id', targetId);
+          await supabase.from('quotations').delete().eq('user_id', targetId);
+          await supabase.from('invoices').delete().eq('user_id', targetId);
+          await supabase.from('activity_logs').delete().eq('user_id', targetId);
+        } catch (err) {
+          console.error('Failed to delete user records from Supabase:', err);
+        }
+      }
+
+      logAudit(`Deleted customer account, subscriptions, and database records for: ${name}`, targetId);
+      showToast('Customer wiped from database successfully!');
+    } catch (err) {
+      console.error('Error executing delete user:', err);
+      showToast('Error deleting user from database', 'error');
+    } finally {
+      setIsDeletingUser(false);
+      setUserToDelete(null);
+    }
   };
 
-  // Renew or manual payment update
-  const handleUpdatePaymentStatus = (payId: string, newStatus: PaymentRecord['status']) => {
-    const updated = payments.map(p => p.id === payId ? { ...p, status: newStatus } : p);
-    setPayments(updated);
-    localStorage.setItem('quoteflow_admin_payments', JSON.stringify(updated));
-    logAudit(`Updated manual payment invoice ${payId} status to: ${newStatus}`);
-    showToast(`Payment marked as ${newStatus}!`);
+  const handleConfirmDeletePayment = async () => {
+    if (!paymentToDelete) return;
+    setIsDeletingPayment(true);
+    try {
+      await paymentService.deletePayment(paymentToDelete.id, paymentToDelete.userId, deleteUserOption);
+
+      const updatedPayments = await paymentService.getAllPayments();
+      setPayments(updatedPayments);
+
+      if (deleteUserOption && paymentToDelete.userId) {
+        const updatedUsers = saasUsers.filter(u => u.id !== paymentToDelete.userId);
+        const updatedSubs = subscriptions.filter(s => s.userId !== paymentToDelete.userId);
+        setSaasUsers(updatedUsers);
+        setSubscriptions(updatedSubs);
+        localStorage.setItem('quoteflow_admin_users', JSON.stringify(updatedUsers));
+        localStorage.setItem('quoteflow_admin_subs', JSON.stringify(updatedSubs));
+        showToast(`Payment submission and user (${paymentToDelete.userName}) deleted from database!`);
+      } else {
+        showToast('Payment record deleted from database!');
+      }
+
+      logAudit(`Deleted payment record ${paymentToDelete.transactionId || paymentToDelete.id} for ${paymentToDelete.userName}${deleteUserOption ? ' (User account also wiped)' : ''}`, paymentToDelete.userId || '');
+    } catch (err) {
+      console.error('Failed to delete payment:', err);
+      showToast('Failed to delete payment record.', 'error');
+    } finally {
+      setIsDeletingPayment(false);
+      setPaymentToDelete(null);
+      setDeleteUserOption(false);
+    }
   };
+
+
 
   // Reply to ticket
   const handleSendTicketReply = (e: React.FormEvent) => {
@@ -578,9 +724,13 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
   const expiredUsers = saasUsers.filter(u => u.status === 'expired').length;
   
   // Financial calculation
-  const totalRevenue = payments.filter(p => p.status === 'Paid').reduce((acc, curr) => acc + curr.amount, 0);
+  const pendingPaymentsCount = payments.filter(p => p.status === 'Pending').length;
+  const verifiedPaymentsCount = payments.filter(p => p.status === 'Verified').length;
+  const rejectedPaymentsCount = payments.filter(p => p.status === 'Rejected').length;
+
+  const totalRevenue = payments.filter(p => p.status === 'Verified').reduce((acc, curr) => acc + curr.amount, 0);
   const monthlyRevenue = payments
-    .filter(p => p.status === 'Paid' && p.paymentDate.startsWith('2026-07'))
+    .filter(p => p.status === 'Verified' && p.paymentDate.startsWith('2026-07'))
     .reduce((acc, curr) => acc + curr.amount, 0);
 
   // Today's fresh signups count:
@@ -754,48 +904,6 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                 </button>
               </div>
 
-              {/* DUMMY DATA CLEAN / WIPE ALERT BOX */}
-              <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/40 p-5 dark:border-indigo-950 dark:bg-indigo-950/20">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-400">
-                      <Database className="h-5 w-5 animate-pulse" />
-                    </div>
-                    <div>
-                      <h3 className="font-sans text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                        {isDummyCleared ? 'Database Blank Mode Enabled' : 'Demo Mode (Dummy Data Loaded)'}
-                      </h3>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
-                        {isDummyCleared ? (
-                          <span>Bhai, aapka database bilkul <strong>saaf aur khali (blank)</strong> hai. Ab is mein koi bhi dummy user, product, ya invoice nahi hai. Aap apne real customers aur quotations bana sakte hain.</span>
-                        ) : (
-                          <span>Aapke panel mein filhaal <strong>mock dummy data (users, billing, payments, support tickets, etc.)</strong> dikh raha hai taake charts aur views khali na hon. Aap isey aik click mein poora saaf kr sakte hain.</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    {isDummyCleared ? (
-                      <button
-                        onClick={handleRestoreDummyData}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-850"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5 text-indigo-500" />
-                        <span>Bahal (Restore) Demo Data</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleWipeDummyData}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-black text-white hover:bg-rose-700 transition-colors shadow-sm"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>🧹 Saaf (Clean) Dummy Data</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               {/* Stats Bento Grid */}
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 
@@ -803,12 +911,12 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                 {[
                   { title: 'Total Registered Users', value: totalUsers, change: '+18% growth', icon: Users, color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-950/20' },
                   { title: 'Active Accounts', value: activeUsers, change: '85% active ratio', icon: UserCheck, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20' },
-                  { title: 'Demo / Trial Users', value: trialUsers, change: '14 Days limit', icon: Clock, color: 'text-amber-500 bg-amber-50 dark:bg-amber-950/20' },
-                  { title: 'Total Suspended', value: suspendedUsers, change: 'System violations', icon: ShieldAlert, color: 'text-rose-500 bg-rose-50 dark:bg-rose-950/20' },
-                  { title: 'Total Revenue (PKR)', value: `${totalRevenue.toLocaleString()}`, change: 'Accumulated deposits', icon: DollarSign, color: 'text-sky-500 bg-sky-50 dark:bg-sky-950/20' },
-                  { title: 'Monthly Billing Run', value: `${monthlyRevenue.toLocaleString()}`, change: 'Current Month July', icon: CreditCard, color: 'text-purple-500 bg-purple-50 dark:bg-purple-950/20' },
+                  { title: 'Pending Payments', value: pendingPaymentsCount, change: 'Requires admin audit', icon: Clock, color: 'text-amber-500 bg-amber-50 dark:bg-amber-950/20' },
+                  { title: 'Verified Payments', value: verifiedPaymentsCount, change: 'Approved system entries', icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20' },
+                  { title: 'Rejected Payments', value: rejectedPaymentsCount, change: 'Failed / incorrect tokens', icon: ShieldAlert, color: 'text-rose-500 bg-rose-50 dark:bg-rose-950/20' },
+                  { title: 'Revenue (PKR)', value: `${totalRevenue.toLocaleString()}`, change: 'Total accumulated deposits', icon: DollarSign, color: 'text-sky-500 bg-sky-50 dark:bg-sky-950/20' },
+                  { title: 'Monthly Revenue (PKR)', value: `${monthlyRevenue.toLocaleString()}`, change: 'Current Month July', icon: CreditCard, color: 'text-purple-500 bg-purple-50 dark:bg-purple-950/20' },
                   { title: 'SaaS Storage Space', value: storageSpace, change: storageChange, icon: Database, color: 'text-slate-500 bg-slate-50 dark:bg-slate-900/60' },
-                  { title: 'Today\'s Fresh Signups', value: `${todaySignupsCount} New User${todaySignupsCount !== 1 ? 's' : ''}`, change: 'Realtime telemetry', icon: TrendingUp, color: 'text-teal-500 bg-teal-50 dark:bg-teal-950/20' },
                 ].map((stat, i) => {
                   const Icon = stat.icon;
                   return (
@@ -1110,7 +1218,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
 
                                 {/* Delete User */}
                                 <button
-                                  onClick={() => handleDeleteUser(u.id, u.fullName)}
+                                  onClick={() => setUserToDelete(u)}
                                   title="Permanently wipe user"
                                   className="rounded-lg p-2 hover:bg-rose-100 text-rose-500 dark:hover:bg-rose-950/40"
                                 >
@@ -1230,6 +1338,44 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                   </div>
                 </div>
               )}
+
+              {/* Delete Confirmation Modal */}
+              {userToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+                  <div className="w-full max-w-md rounded-2xl border border-rose-100 bg-white p-6 shadow-2xl dark:border-rose-950 dark:bg-slate-900 animate-in zoom-in-95 duration-150">
+                    <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                      <Trash2 className="h-5 w-5 text-rose-500" />
+                      <h4 className="font-sans font-black text-slate-900 dark:text-white">Wipe Customer Account</h4>
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      <p className="text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
+                        Bhai, kya aap waqai <strong className="text-rose-600 dark:text-rose-400 font-extrabold">{userToDelete.fullName}</strong> ({userToDelete.companyName}) ka account permanently delete karna chahte hain?
+                      </p>
+                      <p className="text-[11px] bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 p-3 rounded-xl border border-rose-100 dark:border-rose-950/40 font-medium">
+                        ⚠️ <strong>Note:</strong> Is action se unki saari company settings, clients, quotations aur bills permanently delete ho jayenge. Yeh action reverse nahi kiya ja sakta!
+                      </p>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setUserToDelete(null)}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                      >
+                        Abhi Nahi (Cancel)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isDeletingUser}
+                        onClick={() => executeDeleteUser(userToDelete.id, userToDelete.fullName)}
+                        className="rounded-xl bg-rose-600 hover:bg-rose-700 px-5 py-2 text-xs font-bold text-white transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {isDeletingUser ? 'Deleting...' : 'Haan, Delete Krdo'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1315,7 +1461,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                   Payment Ledger
                 </h1>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Audit incoming transfers from bank channels, JazzCash, Easypaisa, or credit card processors.
+                  Audit incoming transfers from bank channels, JazzCash, Easypaisa, or manual deposit routes.
                 </p>
               </div>
 
@@ -1324,53 +1470,100 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 uppercase text-slate-400 dark:bg-slate-950/40 text-[10px] font-bold tracking-wider">
                       <tr>
-                        <th className="px-6 py-4">Transaction Code</th>
-                        <th className="px-6 py-4">Client</th>
+                        <th className="px-6 py-4">Customer & Company</th>
+                        <th className="px-6 py-4">Plan</th>
                         <th className="px-6 py-4">Deposit Channel</th>
                         <th className="px-6 py-4 text-right">Amount (PKR)</th>
                         <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4">Ledger Notes</th>
                         <th className="px-6 py-4 text-right font-bold">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium text-slate-700 dark:text-slate-300">
                       {payments.map(pay => (
                         <tr key={pay.id} className="hover:bg-slate-50/55 dark:hover:bg-slate-900/20">
-                          <td className="px-6 py-4.5 font-mono text-[10px] text-indigo-500 uppercase">{pay.id}</td>
                           <td className="px-6 py-4.5">
                             <div>
                               <p className="font-bold text-slate-900 dark:text-white">{pay.userName}</p>
                               <p className="text-[10px] text-slate-400 dark:text-slate-500">{pay.companyName}</p>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-slate-400 flex items-center gap-1.5 pt-6">
-                            <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
-                              {pay.method}
+                          <td className="px-6 py-4">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                              {pay.plan || 'N/A'}
                             </span>
-                            <span className="text-[10px]">{pay.paymentDate}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 w-max">
+                                {pay.notes?.split(' Transfer')[0] || 'Direct Wire'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500">{pay.paymentDate}</span>
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-black text-slate-900 dark:text-white">
                             {pay.amount.toLocaleString()}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
-                              pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' :
+                              pay.status === 'Verified' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' :
                               pay.status === 'Pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' :
                               'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300'
                             }`}>
                               {pay.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right">
-                            {pay.status !== 'Paid' ? (
-                              <button
-                                onClick={() => handleUpdatePaymentStatus(pay.id, 'Paid')}
-                                className="rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1 text-[10px] font-bold text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400"
-                              >
-                                Mark Paid
-                              </button>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 font-mono">Completed</span>
+                          <td className="px-6 py-4 max-w-xs text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                            {pay.notes && (
+                              <p><strong className="text-slate-600 dark:text-slate-350">User:</strong> {pay.notes}</p>
                             )}
+                            {pay.adminNotes && (
+                              <p className="text-emerald-600 dark:text-emerald-400 mt-1"><strong className="text-emerald-700 dark:text-emerald-500">Admin:</strong> {pay.adminNotes}</p>
+                            )}
+                            {!pay.notes && !pay.adminNotes && <span className="text-slate-300">-</span>}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {pay.screenshot ? (
+                                <button
+                                  onClick={() => setPreviewPayment(pay)}
+                                  className="rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  Proof
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">No proof</span>
+                              )}
+
+                              {pay.status === 'Pending' ? (
+                                <>
+                                  <button
+                                    onClick={() => setActionPayment({ id: pay.id, type: 'verify', amount: pay.amount, customerName: pay.userName })}
+                                    className="rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1 text-[10px] font-bold text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 cursor-pointer"
+                                  >
+                                    Verify
+                                  </button>
+                                  <button
+                                    onClick={() => setActionPayment({ id: pay.id, type: 'reject', amount: pay.amount, customerName: pay.userName })}
+                                    className="rounded-lg bg-rose-50 border border-rose-200 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 cursor-pointer"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-mono capitalize">Processed</span>
+                              )}
+
+                              <button
+                                onClick={() => { setPaymentToDelete(pay); setDeleteUserOption(false); }}
+                                className="rounded-lg bg-rose-50 border border-rose-200 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:border-rose-900/50 dark:text-rose-400 cursor-pointer flex items-center gap-1"
+                                title="Delete payment submission / user from database"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1396,14 +1589,18 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
               </div>
 
               {/* Plans limits grid */}
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 {[
-                  { name: 'Starter Plan', price: '2,500 PKR', limits: ['100 Customers max', '200 Products max', '50 Quotations / mo', '50 Invoices / mo', '100 MB Storage limit'] },
-                  { name: 'Professional Plan', price: '4,500 PKR', limits: ['Unlimited Customers', 'Unlimited Products', 'Unlimited Quotations', 'Unlimited Invoices', '10 GB Cloud Storage'] },
-                  { name: 'Business Plan', price: '8,500 PKR', limits: ['Unlimited Customers & Products', 'Multiple Team Members', 'Advanced PDF Styling', 'AI Quotations Generator', '100 GB Cloud Storage'] },
-                  { name: 'Enterprise Plan', price: '18,000 PKR', limits: ['Unlimited Everything', 'Dedicated SMTP Servers', 'Priority SLA support', 'White Label Brand setup', 'Uncapped DB nodes'] },
+                  { name: 'Professional Plan', price: '1,500 PKR', limits: ['Unlimited Customers', 'Unlimited Products', 'Unlimited Quotations', 'Unlimited Invoices', '10 GB Cloud Storage'] },
+                  { name: 'Business Plan', price: '3,000 PKR', limits: ['Unlimited Customers & Products', 'Multiple Team Members', 'Advanced PDF Styling', 'AI Quotations Generator', '100 GB Cloud Storage'], recommended: true },
+                  { name: 'Enterprise Plan', price: '5,000 PKR', limits: ['Unlimited Everything', 'Dedicated SMTP Servers', 'Priority SLA support', 'White Label Brand setup', 'Uncapped DB nodes'] },
                 ].map((plan, idx) => (
-                  <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div key={idx} className="relative rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
+                    {plan.recommended && (
+                      <span className="absolute -top-3 right-4 rounded-full bg-gradient-to-r from-indigo-600 to-sky-500 px-3 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-xs">
+                        Recommended
+                      </span>
+                    )}
                     <h3 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">{plan.name}</h3>
                     <p className="mt-2 text-xl font-black text-indigo-500">{plan.price}</p>
                     <p className="text-[10px] text-slate-400 uppercase mt-0.5 font-semibold">Throttles:</p>
@@ -1715,6 +1912,39 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                           className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold focus:outline-hidden dark:border-slate-800 dark:bg-slate-950 mt-1.5"
                         />
                       </div>
+
+                      <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-2 space-y-3 bg-indigo-50/20 dark:bg-indigo-950/10 p-3.5 rounded-xl border border-indigo-100/40 dark:border-indigo-950/20">
+                        <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-500 flex items-center gap-1.5">
+                          <Key className="h-3.5 w-3.5" />
+                          Custom Admin Credentials (Apni Marzi Ka Admin)
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Admin Email Address</label>
+                            <input
+                              type="email"
+                              value={systemSettings.adminCustomEmail || ''}
+                              onChange={(e) => setSystemSettings({ ...systemSettings, adminCustomEmail: e.target.value })}
+                              placeholder="e.g. admin@yourdomain.com"
+                              className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-semibold focus:outline-hidden dark:border-slate-800 dark:bg-slate-950 mt-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Admin Password</label>
+                            <input
+                              type="text"
+                              value={systemSettings.adminCustomPassword || ''}
+                              onChange={(e) => setSystemSettings({ ...systemSettings, adminCustomPassword: e.target.value })}
+                              placeholder="e.g. MySecurePass123"
+                              className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-semibold focus:outline-hidden dark:border-slate-800 dark:bg-slate-950 mt-1"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-indigo-600 dark:text-sky-400 font-medium">
+                          Bhai, yahan apni pasand ka admin email aur password set karein aur neeche "Save" button dabaen. Phir aap in credentials se login kar sakte hain!
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -1892,10 +2122,9 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                     onChange={(e) => setNewUser({ ...newUser, plan: e.target.value as any })}
                     className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold focus:outline-hidden dark:border-slate-800 dark:bg-slate-950 mt-1.5 text-slate-800 dark:text-slate-200"
                   >
-                    <option value="Starter">Starter Plan (2500 PKR / mo)</option>
-                    <option value="Professional">Professional Plan (4500 PKR / mo)</option>
-                    <option value="Business">Business Plan (8500 PKR / mo)</option>
-                    <option value="Enterprise">Enterprise Plan (18000 PKR / mo)</option>
+                    <option value="Professional">Professional Plan (1500 PKR / mo)</option>
+                    <option value="Business">Business Plan (3000 PKR / mo) [Recommended]</option>
+                    <option value="Enterprise">Enterprise Plan (5000 PKR / mo)</option>
                   </select>
                 </div>
                 <div>
@@ -1906,6 +2135,7 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                     className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold focus:outline-hidden dark:border-slate-800 dark:bg-slate-950 mt-1.5 text-slate-800 dark:text-slate-200"
                   >
                     <option value="0">No trial - Activate Billing immediately</option>
+                    <option value="3">3 Days Trial Period</option>
                     <option value="7">7 Days Trial Period</option>
                     <option value="14">14 Days Trial Period</option>
                     <option value="30">30 Days Trial Period</option>
@@ -2012,6 +2242,345 @@ export function AdminPanel({ user, onExitAdmin, onImpersonate, isSupabaseConnect
                 className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-black text-white hover:opacity-90 dark:bg-white dark:text-slate-900"
               >
                 Samajh Gaya, Shukriya!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* PAYMENT PROOF MODAL (Admin) */}
+      {/* ======================================================== */}
+      {previewPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <h3 className="font-sans font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Eye className="h-5 w-5 text-indigo-500 animate-pulse" />
+                Payment Submission Proof Detail
+              </h3>
+              <button 
+                onClick={() => { setPreviewPayment(null); setIsScreenshotZoomed(false); }} 
+                className="text-slate-400 hover:text-slate-500 rounded-lg p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Split layout: Screenshot left, Details right */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Column: Interactive Screenshot */}
+              <div className="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950/40 rounded-xl p-4 border border-slate-100 dark:border-slate-800/60 relative overflow-hidden group min-h-[300px]">
+                {previewPayment.screenshot ? (
+                  <>
+                    <div 
+                      className={`relative cursor-zoom-in transition-all duration-300 ${isScreenshotZoomed ? 'scale-150 z-20' : 'hover:scale-105'}`}
+                      onClick={() => setIsScreenshotZoomed(!isScreenshotZoomed)}
+                    >
+                      <img 
+                        src={previewPayment.screenshot} 
+                        alt="Payment Proof Screenshot" 
+                        className="max-h-[320px] object-contain rounded-lg shadow-md border border-slate-200 dark:border-slate-800"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute bottom-2 right-2 bg-slate-900/85 text-white p-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ZoomIn className="h-3 w-3" />
+                        {isScreenshotZoomed ? 'Click to zoom out' : 'Click to zoom'}
+                      </div>
+                    </div>
+                    {/* Controls Row */}
+                    <div className="flex items-center gap-3 mt-4 w-full justify-center">
+                      <button
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = previewPayment.screenshot!;
+                          link.download = `proof_${previewPayment.transactionId}.jpg`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-900 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Download Proof
+                      </button>
+                      <button
+                        onClick={() => {
+                          window.open(previewPayment.screenshot, '_blank');
+                        }}
+                        className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Open in New Tab
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <AlertCircle className="h-10 w-10 text-slate-400 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">No payment proof uploaded.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Metadata details & Lifecycle History */}
+              <div className="space-y-5 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Customer Name</span>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-white block">{previewPayment.userName}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Company Name</span>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-white block">{previewPayment.companyName || '-'}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Selected Plan</span>
+                      <span className="inline-flex items-center gap-1 mt-0.5 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                        {previewPayment.plan}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Payment Date</span>
+                      <span className="text-sm font-semibold text-slate-950 dark:text-white block">{previewPayment.paymentDate}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Transaction ID</span>
+                      <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 block">{previewPayment.transactionId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Amount</span>
+                      <span className="text-sm font-black text-indigo-600 dark:text-sky-400 block">PKR {previewPayment.amount.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Customer Notes</span>
+                    <p className="text-xs text-slate-600 dark:text-slate-350 bg-slate-50 dark:bg-slate-950/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 mt-1 leading-relaxed italic whitespace-pre-wrap">
+                      {previewPayment.notes || 'No notes submitted.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Lifecycle History Timeline */}
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 dark:text-slate-400 block mb-3 flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5" />
+                    Transaction Lifecycle Timeline
+                  </span>
+                  <div className="space-y-3 pl-2.5 border-l-2 border-indigo-100 dark:border-indigo-950/80">
+                    {(previewPayment.history || []).map((h: any, idx: number) => (
+                      <div key={idx} className="relative pl-4">
+                        <div className={`absolute -left-[15px] top-1 h-2.5 w-2.5 rounded-full border-2 bg-white dark:bg-slate-900 ${
+                          h.status === 'Verified' ? 'border-emerald-500 bg-emerald-500' :
+                          h.status === 'Rejected' ? 'border-rose-500 bg-rose-500' :
+                          'border-indigo-500 bg-indigo-500'
+                        }`} />
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[11px] font-extrabold ${
+                            h.status === 'Verified' ? 'text-emerald-600 dark:text-emerald-400' :
+                            h.status === 'Rejected' ? 'text-rose-600 dark:text-rose-400' :
+                            'text-indigo-600 dark:text-indigo-400'
+                          }`}>
+                            {h.status === 'Verified' ? 'Approved & Activated' : h.status === 'Rejected' ? 'Rejected/Declined' : h.status}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400">
+                            {new Date(h.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Action by: <strong>{h.adminName}</strong></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions Footer */}
+            <div className="mt-6 flex justify-end border-t border-slate-100 dark:border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => { setPreviewPayment(null); setIsScreenshotZoomed(false); }}
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Close Portal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* VERIFY PAYMENT CONFIRMATION MODAL (Admin) */}
+      {/* ======================================================== */}
+      {actionPayment && actionPayment.type === 'verify' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl dark:border-emerald-950 dark:bg-slate-900 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <CheckCircle2 className="h-5 w-5 animate-bounce" />
+              </div>
+              <h3 className="font-sans font-black text-slate-900 dark:text-white">Confirm Verification</h3>
+            </div>
+
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              Are you sure you want to verify this payment of <strong className="text-emerald-600 dark:text-emerald-400">PKR {actionPayment.amount.toLocaleString()}</strong> submitted by <strong>{actionPayment.customerName}</strong>? 
+            </p>
+            <p className="text-[11px] text-slate-400 mt-2 leading-normal">
+              This action will automatically activate their premium subscription, configure their workspace plan limitations, and dispatch a real-time system notification to the client.
+            </p>
+
+            <div className="mt-4">
+              <label className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                Admin Audit Notes (Optional)
+              </label>
+              <textarea
+                value={actionNotes}
+                onChange={(e) => setActionNotes(e.target.value)}
+                placeholder="e.g., JazzCash transaction ID confirmed. Verified by owner."
+                rows={3}
+                className="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:focus:border-indigo-500 outline-none"
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => { setActionPayment(null); setActionNotes(''); }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPaymentAction}
+                className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-black text-white hover:bg-emerald-700 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="h-4 w-4" />
+                Approve & Activate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* REJECT PAYMENT CONFIRMATION MODAL (Admin) */}
+      {/* ======================================================== */}
+      {actionPayment && actionPayment.type === 'reject' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl dark:border-rose-950 dark:bg-slate-900 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
+                <AlertCircle className="h-5 w-5 text-rose-500" />
+              </div>
+              <h3 className="font-sans font-black text-slate-900 dark:text-white">Reject Submission</h3>
+            </div>
+
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              Are you sure you want to decline the payment of <strong className="text-rose-600 dark:text-rose-400">PKR {actionPayment.amount.toLocaleString()}</strong> submitted by <strong>{actionPayment.customerName}</strong>?
+            </p>
+
+            <div className="mt-4">
+              <label className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                Rejection Reason (Required) <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={actionNotes}
+                onChange={(e) => setActionNotes(e.target.value)}
+                placeholder="Provide details about why the payment was rejected (e.g., Invalid transaction screenshot, incorrect amount, double submission)."
+                rows={3}
+                required
+                className="w-full rounded-xl border border-rose-300 p-2.5 text-xs text-slate-900 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 dark:border-rose-800 dark:bg-slate-950 dark:text-white dark:focus:border-rose-500 outline-none"
+              />
+              {actionNotes.trim() === '' && (
+                <span className="text-[9px] text-rose-500 block mt-1">Please enter a reason to explain the rejection to the client.</span>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => { setActionPayment(null); setActionNotes(''); }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionNotes.trim() === ''}
+                onClick={handleConfirmPaymentAction}
+                className="rounded-xl bg-rose-600 px-5 py-2 text-xs font-black text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+                Reject Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* DELETE PAYMENT & USER CONFIRMATION MODAL (Admin) */}
+      {/* ======================================================== */}
+      {paymentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl dark:border-rose-950 dark:bg-slate-900 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
+                <Trash2 className="h-5 w-5 text-rose-500" />
+              </div>
+              <h3 className="font-sans font-black text-slate-900 dark:text-white">Delete Payment / User</h3>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                Are you sure you want to delete payment record <strong className="text-slate-900 dark:text-white">{paymentToDelete.transactionId || paymentToDelete.id}</strong> of <strong className="text-rose-600 dark:text-rose-400">PKR {paymentToDelete.amount.toLocaleString()}</strong> submitted by <strong>{paymentToDelete.userName}</strong> ({paymentToDelete.companyName || 'N/A'})?
+              </p>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
+                <label className="flex items-start gap-2.5 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={deleteUserOption}
+                    onChange={(e) => setDeleteUserOption(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                  />
+                  <span>
+                    Also delete customer account (<strong className="text-rose-600 dark:text-rose-400">{paymentToDelete.userName}</strong>) and wipe all user data from database.
+                  </span>
+                </label>
+              </div>
+
+              <p className="text-[11px] text-slate-400 leading-normal">
+                This record will be permanently deleted from local cache and Supabase database.
+              </p>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => { setPaymentToDelete(null); setDeleteUserOption(false); }}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingPayment}
+                onClick={handleConfirmDeletePayment}
+                className="rounded-xl bg-rose-600 hover:bg-rose-700 px-5 py-2 text-xs font-bold text-white transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {isDeletingPayment ? 'Deleting...' : 'Delete Permanently'}
               </button>
             </div>
           </div>

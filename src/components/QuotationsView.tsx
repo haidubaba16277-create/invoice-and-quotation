@@ -29,21 +29,34 @@ import {
   FileSpreadsheet,
   Settings,
   Scale,
-  ExternalLink
+  ExternalLink,
+  Send,
+  MessageSquare,
+  QrCode,
+  Download,
+  Check,
+  Activity,
+  Info,
+  Clock,
+  Mail,
+  RefreshCw
 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
-import { Quotation, QuoteItem, Customer, Product, CompanySettings } from '../types/business';
+import { Quotation, QuoteItem, Customer, Product, CompanySettings, QuotationActivity } from '../types/business';
+import { UserProfile } from '../types/auth';
+import { isSubscriptionExpired, checkPlanLimits } from '../lib/subscription';
 
 interface QuotationsViewProps {
   isSupabaseConnected: boolean;
   onNavigate?: (view: string) => void;
+  user: UserProfile | null;
 }
 
 type SortField = 'quoteNumber' | 'grandTotal' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsViewProps) {
+export function QuotationsView({ isSupabaseConnected, onNavigate, user }: QuotationsViewProps) {
   // Application Data States
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -73,6 +86,19 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
   const [selectedQuote, setSelectedQuote] = useState<Quotation | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Quotation Sharing System States
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareQuote, setShareQuote] = useState<Quotation | null>(null);
+  const [shareTab, setShareTab] = useState<'whatsapp' | 'email' | 'link' | 'pdf'>('whatsapp');
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailAttached, setEmailAttached] = useState(true);
+  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [secureToken, setSecureToken] = useState('');
+  const [activeQuoteActivities, setActiveQuoteActivities] = useState<QuotationActivity[]>([]);
+
   // Conversion Workflow States
   const [conversionQuote, setConversionQuote] = useState<Quotation | null>(null);
   const [isConverting, setIsConverting] = useState(false);
@@ -101,7 +127,69 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
 
   useEffect(() => {
     loadData();
+
+    const silentSync = async () => {
+      try {
+        const freshQuotes = await dataService.getQuotations();
+        setQuotations(freshQuotes);
+      } catch (err) {}
+    };
+
+    window.addEventListener('storage', silentSync);
+    window.addEventListener('focus', silentSync);
+    window.addEventListener('quotationStatusUpdated', silentSync);
+
+    const intervalId = setInterval(silentSync, 3000);
+
+    return () => {
+      window.removeEventListener('storage', silentSync);
+      window.removeEventListener('focus', silentSync);
+      window.removeEventListener('quotationStatusUpdated', silentSync);
+      clearInterval(intervalId);
+    };
   }, []);
+
+  const handleStatusChange = async (quote: Quotation, newStatus: Quotation['status']) => {
+    try {
+      const timestamp = new Date().toISOString();
+      const updatedQuote = { ...quote, status: newStatus, updatedAt: timestamp };
+      
+      if (newStatus === 'Accepted') {
+        await dataService.updatePublicQuotationStatus(quote.id, 'Accepted', {
+          signatureName: 'Manual Approval by Owner',
+          signatureDate: timestamp
+        }, quote);
+      } else {
+        await dataService.saveQuotation(updatedQuote);
+      }
+      
+      showToast(`Quotation status set to ${newStatus}`, 'success');
+      loadData();
+    } catch (err) {
+      console.error('Failed to change status:', err);
+      showToast('Error updating status.', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (!isShareModalOpen || !shareQuote) return;
+
+    const refreshActivities = async () => {
+      try {
+        const activities = await dataService.getQuotationActivities(shareQuote.id);
+        setActiveQuoteActivities(activities);
+      } catch (err) {
+        console.error('Error polling activities:', err);
+      }
+    };
+
+    refreshActivities();
+    const intervalId = setInterval(refreshActivities, 2000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isShareModalOpen, shareQuote?.id]);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -110,6 +198,10 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
 
   // Convert to Invoice Actions
   const handleConvertToInvoice = (quote: Quotation) => {
+    if (isSubscriptionExpired(user)) {
+      alert('Your free trial has ended. Please upgrade your subscription to convert quotations to invoices.');
+      return;
+    }
     setConversionQuote(quote);
   };
 
@@ -117,6 +209,13 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
     if (!conversionQuote) return;
     setIsConverting(true);
     try {
+      const limitCheck = await checkPlanLimits(user, 'invoices');
+      if (limitCheck.reached) {
+        showToast(limitCheck.message, 'error');
+        alert(limitCheck.message);
+        setIsConverting(false);
+        return;
+      }
       await dataService.convertQuotationToInvoice(conversionQuote.id);
       showToast(`Quotation ${conversionQuote.quoteNumber} has been successfully converted to an Invoice!`, 'success');
       setConversionQuote(null);
@@ -245,7 +344,16 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
     }
   };
 
-  const handleOpenCreator = () => {
+  const handleOpenCreator = async () => {
+    if (isSubscriptionExpired(user)) {
+      alert('Your free trial has ended. Please upgrade your subscription to build new quotations.');
+      return;
+    }
+    const limitCheck = await checkPlanLimits(user, 'quotations');
+    if (limitCheck.reached) {
+      alert(limitCheck.message);
+      return;
+    }
     const today = new Date().toISOString().split('T')[0];
     const expiry = new Date(Date.now() + 15 * 24 * 3600 * 1000).toISOString().split('T')[0]; // +15 days standard
     
@@ -257,7 +365,7 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
       status: 'Draft',
       discountType: 'fixed',
       discountValue: 0,
-      taxPercentage: 18, // Default Punjab/PK Sales Tax
+      taxPercentage: 18, // Default Sales Tax
       notes: companySettings?.footerNotes || 'Thank you for choosing us! We appreciate your business.',
       terms: companySettings?.termsConditions || '1. Validity: This quote is valid for 15 days.\n2. Payment: 50% advance, remaining 50% upon delivery.\n3. Taxes: Standard sales tax applies.',
     });
@@ -303,6 +411,125 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
     setActiveQuote(quote);
     setEditorItems(quote.items || []);
     setViewMode('preview');
+  };
+
+  const handleOpenShareModal = async (quote: Quotation) => {
+    let currentQuote = quote;
+    if (quote.status === 'Draft') {
+      const updatedQuote = { ...quote, status: 'Sent' as const };
+      await dataService.saveQuotation(updatedQuote);
+      await loadData();
+      await dataService.logQuotationActivity(quote.id, 'Quotation Sent', 'Quotation marked as Sent and launched in Delivery Center.');
+      currentQuote = updatedQuote;
+    }
+
+    // 1. Get secure token
+    const token = await dataService.getSecureTokenForQuote(currentQuote);
+    setSecureToken(token);
+    
+    // 2. Prepare sharing contents
+    const publicLink = `${window.location.origin}/quote/public/${token}`;
+    
+    // WhatsApp prefilled message
+    const waMsg = `Hello ${currentQuote.customerName || 'Customer'},\n\nHope you are doing well. Here is our professional Quotation ${currentQuote.quoteNumber} for your review. Please click the secure link below to view details, download PDF, or digitally approve it.\n\nLink: ${publicLink}\n\nLooking forward to working with you!\n\nRegards,\n${companySettings?.companyName || 'Our Company'}`;
+    setWhatsappMessage(waMsg);
+    
+    // Email recipient
+    const cust = customers.find(c => c.id === currentQuote.customerId);
+    const recipientEmail = cust?.email || '';
+    setEmailTo(recipientEmail);
+    
+    // Email prefilled details
+    setEmailSubject(`Quotation ${currentQuote.quoteNumber} from ${companySettings?.companyName || 'Our Company'}`);
+    
+    const emailText = `Dear ${currentQuote.customerName || 'Customer'},\n\nHope this email finds you well.\n\nPlease find enclosed our quotation **${currentQuote.quoteNumber}** for your review. You can view, download the PDF, or digitally sign and approve the quotation online at the secure link below:\n\n${publicLink}\n\nExpiry Date: ${currentQuote.expiryDate}\nTotal Value: Rs. ${currentQuote.grandTotal.toLocaleString('en-US')}\n\nIf you have any questions, feel free to reply directly to this email.\n\nBest Regards,\n${companySettings?.companyName || 'Our Company'}`;
+    setEmailBody(emailText);
+    
+    // 3. Set remaining modal states
+    setShareQuote(currentQuote);
+    setShareTab('whatsapp');
+    setCopiedLink(false);
+    setIsShareModalOpen(true);
+    
+    // 4. Fetch activity logs
+    const activities = await dataService.getQuotationActivities(currentQuote.id);
+    setActiveQuoteActivities(activities);
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!shareQuote) return;
+    
+    if (shareQuote.status === 'Draft') {
+      const updatedQuote = { ...shareQuote, status: 'Sent' as const };
+      await dataService.saveQuotation(updatedQuote);
+      await loadData();
+    }
+    
+    await dataService.logQuotationActivity(shareQuote.id, 'Quotation Sent', 'Quotation message prefilled for WhatsApp sharing.');
+    
+    const waUrl = `https://wa.me/${emailTo ? emailTo.replace(/\D/g, '') : ''}?text=${encodeURIComponent(whatsappMessage)}`;
+    window.open(waUrl, '_blank');
+    showToast('WhatsApp redirect initiated successfully!', 'success');
+    
+    const activities = await dataService.getQuotationActivities(shareQuote.id);
+    setActiveQuoteActivities(activities);
+  };
+
+  const handleSendEmail = async () => {
+    if (!shareQuote) return;
+    
+    if (shareQuote.status === 'Draft') {
+      const updatedQuote = { ...shareQuote, status: 'Sent' as const };
+      await dataService.saveQuotation(updatedQuote);
+      await loadData();
+    }
+    
+    await dataService.logQuotationActivity(shareQuote.id, 'Quotation Sent', `Prefilled email composer triggered for ${emailTo}.`);
+    
+    const mailtoUrl = `mailto:${emailTo}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+    window.location.href = mailtoUrl;
+    showToast('Mail client triggered successfully!', 'success');
+    
+    const activities = await dataService.getQuotationActivities(shareQuote.id);
+    setActiveQuoteActivities(activities);
+  };
+
+  const handleCopyLink = async () => {
+    if (!shareQuote) return;
+    
+    const publicLink = `${window.location.origin}/quote/public/${secureToken}`;
+    try {
+      await navigator.clipboard.writeText(publicLink);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+      
+      if (shareQuote.status === 'Draft') {
+        const updatedQuote = { ...shareQuote, status: 'Sent' as const };
+        await dataService.saveQuotation(updatedQuote);
+        await loadData();
+      }
+      
+      await dataService.logQuotationActivity(shareQuote.id, 'Quotation Sent', 'Client secure public link copied to clipboard.');
+      showToast('Secure link copied to clipboard!', 'success');
+      
+      const activities = await dataService.getQuotationActivities(shareQuote.id);
+      setActiveQuoteActivities(activities);
+    } catch {
+      showToast('Clipboard copy failed. Please select and copy manually.', 'error');
+    }
+  };
+
+  const handleDownloadPDFLocal = async () => {
+    if (!shareQuote) return;
+    
+    await dataService.logQuotationActivity(shareQuote.id, 'Quotation Downloaded', 'Quotation print/PDF generation downloaded from owner share center.');
+    showToast('Quotation prepared for printing/download!', 'success');
+    
+    const activities = await dataService.getQuotationActivities(shareQuote.id);
+    setActiveQuoteActivities(activities);
+    
+    setIsShareModalOpen(false);
+    handlePreviewQuote(shareQuote);
   };
 
   const handleBackToList = () => {
@@ -419,6 +646,19 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
   };
 
   const handleSaveQuotation = async () => {
+    if (!activeQuote?.id) {
+      if (isSubscriptionExpired(user)) {
+        showToast('Your free trial has ended. Please upgrade your subscription to create new quotations.', 'error');
+        alert('Your free trial has ended. Please upgrade your subscription to create new quotations.');
+        return;
+      }
+      const limitCheck = await checkPlanLimits(user, 'quotations');
+      if (limitCheck.reached) {
+        showToast(limitCheck.message, 'error');
+        alert(limitCheck.message);
+        return;
+      }
+    }
     if (!validateQuote()) {
       showToast('Please correct the validation errors in the editor.', 'error');
       return;
@@ -532,14 +772,26 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleOpenCreator}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 hover:opacity-95 transition-all shrink-0 active:scale-98"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Create Quotation</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={loadData}
+                title="Sync & Refresh Statuses"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 px-3 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-indigo-500 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenCreator}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 hover:opacity-95 transition-all shrink-0 active:scale-98"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create Quotation</span>
+              </button>
+            </div>
           </div>
 
           {/* Quick status counters / filters */}
@@ -748,22 +1000,31 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
 
                           {/* Status */}
                           <td className="px-5 py-4 text-xs">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
-                              quote.status === 'Accepted'
-                                ? 'border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-950/20 dark:bg-emerald-950/30 dark:text-emerald-400'
-                                : quote.status === 'Sent'
-                                ? 'border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-950/20 dark:bg-blue-950/30 dark:text-blue-400'
-                                : quote.status === 'Rejected'
-                                ? 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-950/20 dark:bg-rose-950/30 dark:text-rose-400'
-                                : quote.status === 'Converted'
-                                ? 'border-purple-100 bg-purple-50 text-purple-700 dark:border-purple-950/20 dark:bg-purple-950/30 dark:text-purple-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400'
-                            }`}>
-                              {quote.status}
-                            </span>
+                            <select
+                              value={quote.status}
+                              onChange={(e) => handleStatusChange(quote, e.target.value as Quotation['status'])}
+                              title="Click to update quotation status"
+                              className={`cursor-pointer rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider border outline-hidden transition-all ${
+                                quote.status === 'Accepted'
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                  : quote.status === 'Sent'
+                                  ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300'
+                                  : quote.status === 'Rejected'
+                                  ? 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300'
+                                  : quote.status === 'Converted'
+                                  ? 'border-purple-300 bg-purple-50 text-purple-800 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300'
+                                  : 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                              }`}
+                            >
+                              <option value="Draft" className="bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-200">Draft</option>
+                              <option value="Sent" className="bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-200">Sent</option>
+                              <option value="Accepted" className="bg-white text-emerald-700 dark:bg-slate-900 dark:text-emerald-400 font-bold">✓ Accepted</option>
+                              <option value="Rejected" className="bg-white text-rose-700 dark:bg-slate-900 dark:text-rose-400 font-bold">✕ Rejected</option>
+                              <option value="Converted" className="bg-white text-purple-700 dark:bg-slate-900 dark:text-purple-400 font-bold">Converted</option>
+                            </select>
                           </td>
 
-                          {/* Actions */}
+                           {/* Actions */}
                           <td className="px-5 py-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
@@ -772,6 +1033,15 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
                                 className="p-1.5 rounded-lg border border-transparent hover:border-slate-100 hover:bg-slate-100/50 text-slate-500 hover:text-slate-800 dark:hover:border-slate-800 dark:hover:bg-slate-800/50 dark:text-slate-400 dark:hover:text-white transition-all"
                               >
                                 <Eye className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                title="Send Quotation"
+                                onClick={() => handleOpenShareModal(quote)}
+                                className="p-1.5 rounded-lg border border-transparent hover:border-indigo-100 hover:bg-indigo-50/50 text-indigo-500 hover:text-indigo-700 dark:hover:border-indigo-950 dark:hover:bg-indigo-950/20 dark:text-sky-400 dark:hover:text-sky-300 transition-all flex items-center gap-1 text-[11px] font-bold"
+                              >
+                                <Send className="h-3.5 w-3.5 text-indigo-500" />
+                                <span className="hidden lg:inline">Send</span>
                               </button>
                               
                               <button
@@ -790,15 +1060,20 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
                                 <Copy className="h-3.5 w-3.5" />
                               </button>
 
-                              {quote.status !== 'Converted' ? (
+                              {quote.status !== 'Converted' && (
                                 <button
-                                  title="Convert to Invoice"
+                                  disabled={quote.status !== 'Accepted'}
+                                  title={quote.status === 'Accepted' ? "Convert to Invoice" : "Quotation must be Accepted to convert"}
                                   onClick={() => handleConvertToInvoice(quote)}
-                                  className="p-1.5 rounded-lg border border-transparent hover:border-slate-100 hover:bg-slate-100/50 text-amber-500 hover:text-amber-700 dark:hover:border-slate-800 dark:hover:bg-slate-800/50 dark:text-amber-400 dark:hover:text-amber-300 transition-all"
+                                  className={`p-1.5 rounded-lg border border-transparent transition-all ${
+                                    quote.status === 'Accepted'
+                                      ? 'text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 hover:border-slate-100 hover:bg-slate-100/50 dark:hover:border-slate-800'
+                                      : 'text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40'
+                                  }`}
                                 >
                                   <Receipt className="h-3.5 w-3.5" />
                                 </button>
-                              ) : null}
+                              )}
 
                               <button
                                 title="Delete Quotation"
@@ -1263,9 +1538,9 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
                     >
                       <option value="0">0% GST (Tax Exempt / Zero-Rated)</option>
                       <option value="5">5% GST (Reduced Rate Services)</option>
-                      <option value="13">13% GST (Sindh Revenue Board Standard)</option>
-                      <option value="16">16% GST (PRA Punjab Revenue standard)</option>
-                      <option value="18">18% GST (Pakistan Federal FBR standard)</option>
+                      <option value="13">13% GST (Standard Services GST)</option>
+                      <option value="16">16% GST (Standard Regional GST)</option>
+                      <option value="18">18% GST (Standard Sales Tax)</option>
                     </select>
 
                     {calculationSummary.taxAmount > 0 && (
@@ -1403,13 +1678,28 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
               {activeQuote.status !== 'Converted' && (
                 <button
                   type="button"
+                  disabled={activeQuote.status !== 'Accepted'}
+                  title={activeQuote.status === 'Accepted' ? "Convert to Invoice" : "Quotation must be Accepted to convert"}
                   onClick={() => handleConvertToInvoice(activeQuote as Quotation)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-95 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-amber-500/10 focus:outline-hidden transition-all"
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition-all ${
+                    activeQuote.status === 'Accepted'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-95 shadow-md shadow-amber-500/10'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50 font-semibold'
+                  }`}
                 >
                   <Receipt className="h-4 w-4" />
                   <span>Convert to Invoice</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => handleOpenShareModal(activeQuote as Quotation)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:opacity-95 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/10 transition-all"
+              >
+                <Send className="h-4 w-4" />
+                <span>Send Quotation</span>
+              </button>
 
               <button
                 type="button"
@@ -1677,10 +1967,335 @@ export function QuotationsView({ isSupabaseConnected, onNavigate }: QuotationsVi
                 <span>Convert & View</span>
               </button>
             </div>
-
           </div>
         </div>
       )}
+
+      {/* PROFESSIONAL QUOTATION DELIVERY SYSTEM - SHARE MODAL */}
+      {isShareModalOpen && shareQuote && (() => {
+        const hasWhatsAppSent = activeQuoteActivities.some(a => a.event === 'Quotation Sent' && a.details?.toLowerCase().includes('whatsapp'));
+        const hasEmailSent = activeQuoteActivities.some(a => a.event === 'Quotation Sent' && a.details?.toLowerCase().includes('email'));
+        const hasCustomerViewed = activeQuoteActivities.some(a => a.event === 'Quotation Viewed');
+        const hasCustomerAccepted = shareQuote.status === 'Accepted' || shareQuote.status === 'Converted' || activeQuoteActivities.some(a => a.event === 'Quotation Accepted');
+        const hasCustomerRejected = shareQuote.status === 'Rejected' || activeQuoteActivities.some(a => a.event === 'Quotation Rejected');
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
+            <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800/80 dark:bg-slate-900 flex flex-col max-h-[90vh]">
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 p-4 shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <Check className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">Delivery Center</h3>
+                    <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">Share Serial: {shareQuote.quoteNumber}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsShareModalOpen(false);
+                    setShareQuote(null);
+                  }}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Modal Body Scroll Container */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                
+                {/* SUCCESS STATE HEADER */}
+                <div className="flex flex-col items-center justify-center text-center p-5 rounded-2xl border border-emerald-100 dark:border-emerald-950/40 bg-emerald-50/20 dark:bg-emerald-950/5">
+                  <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 animate-bounce">
+                    <Check className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-base font-black text-slate-800 dark:text-white uppercase tracking-wide flex items-center gap-2">
+                    ✅ Quotation Sent Successfully
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md font-sans">
+                    The interactive quotation contract and secure access tokens are live. Your customer can now view, download, or digitally sign and accept this document.
+                  </p>
+                </div>
+
+                {/* QUICK ACTION BUTTONS */}
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    ⚡ Quick Actions
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Action 1: Copy Public Link */}
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
+                        copiedLink 
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400' 
+                          : 'bg-indigo-50/30 hover:bg-indigo-50/70 border-slate-150 hover:border-indigo-200 text-indigo-700 dark:bg-slate-950/20 dark:hover:bg-slate-950/40 dark:border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-1.5">
+                        <div className={`p-1 rounded-md ${copiedLink ? 'bg-emerald-100 dark:bg-emerald-950/55' : 'bg-indigo-100/70 dark:bg-slate-900'}`}>
+                          {copiedLink ? <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <Copy className="h-4 w-4 text-indigo-600 dark:text-sky-400" />}
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-400 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">
+                          {copiedLink ? 'Copied!' : 'Link'}
+                        </span>
+                      </div>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">Copy Public Link</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight font-sans">Save secure portal link to your clipboard</p>
+                    </button>
+
+                    {/* Action 2: Open WhatsApp */}
+                    <button
+                      type="button"
+                      onClick={handleSendWhatsApp}
+                      className="flex flex-col items-start p-3.5 rounded-xl border border-slate-150 bg-emerald-50/10 hover:bg-emerald-50/30 dark:bg-slate-950/20 dark:hover:bg-slate-950/40 dark:border-slate-800 hover:border-emerald-200 text-emerald-700 text-left transition-all"
+                    >
+                      <div className="flex items-center justify-between w-full mb-1.5">
+                        <div className="p-1 rounded-md bg-emerald-100/70 dark:bg-slate-900">
+                          <MessageSquare className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-400 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">WhatsApp</span>
+                      </div>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">Open WhatsApp</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight font-sans">Launch chat with prefilled quotation message</p>
+                    </button>
+
+                    {/* Action 3: Download PDF */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadPDFLocal}
+                      className="flex flex-col items-start p-3.5 rounded-xl border border-slate-150 bg-rose-50/10 hover:bg-rose-50/30 dark:bg-slate-950/20 dark:hover:bg-slate-950/40 dark:border-slate-800 hover:border-rose-200 text-rose-700 text-left transition-all"
+                    >
+                      <div className="flex items-center justify-between w-full mb-1.5">
+                        <div className="p-1 rounded-md bg-rose-100/70 dark:bg-slate-900">
+                          <Download className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-400 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">PDF</span>
+                      </div>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">Download PDF</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight font-sans">Generate professional document print-outs</p>
+                    </button>
+
+                    {/* Action 4: Preview Public Quote */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const publicLink = `${window.location.origin}/quote/public/${secureToken}`;
+                        window.open(publicLink, '_blank');
+                      }}
+                      className="flex flex-col items-start p-3.5 rounded-xl border border-slate-150 bg-sky-50/10 hover:bg-sky-50/30 dark:bg-slate-950/20 dark:hover:bg-slate-950/40 dark:border-slate-800 hover:border-sky-200 text-sky-700 text-left transition-all"
+                    >
+                      <div className="flex items-center justify-between w-full mb-1.5">
+                        <div className="p-1 rounded-md bg-sky-100/70 dark:bg-slate-900">
+                          <ExternalLink className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-400 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">Live</span>
+                      </div>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">Preview Public Quote</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight font-sans">Inspect exactly what the customer sees</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* RECIPIENT INFORMATION & CUSTOMIZATION CARD */}
+                <div className="bg-slate-50/70 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-800 rounded-xl p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                      <span>⚙️</span>
+                      <span>Recipient & Messaging Configuration</span>
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Phone / WhatsApp Line</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 923001234567"
+                        value={emailTo}
+                        onChange={(e) => setEmailTo(e.target.value)}
+                        className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Email Address</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. client@example.com"
+                        value={emailTo}
+                        onChange={(e) => setEmailTo(e.target.value)}
+                        className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">WhatsApp Message Text</label>
+                      <textarea
+                        rows={3}
+                        value={whatsappMessage}
+                        onChange={(e) => setWhatsappMessage(e.target.value)}
+                        className="w-full text-[10px] font-mono leading-relaxed rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Email Body Text</label>
+                      <textarea
+                        rows={3}
+                        value={emailBody}
+                        onChange={(e) => setEmailBody(e.target.value)}
+                        className="w-full text-[10px] font-sans leading-relaxed rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleSendEmail}
+                      className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-[11px] font-bold shadow-xs transition-colors"
+                    >
+                      <Mail className="h-3 w-3" />
+                      <span>Send via Email Client</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* SHARE HISTORY MILESTONES */}
+                <div className="bg-slate-50/50 dark:bg-slate-950/10 border border-slate-150 dark:border-slate-850 rounded-2xl p-4.5 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                      <span>📈</span>
+                      <span>Share History Milestones</span>
+                    </span>
+                    <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold">
+                      Real-time Active
+                    </span>
+                  </div>
+
+                  {/* Grid checklist style */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
+                      hasWhatsAppSent 
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-400' 
+                        : 'bg-slate-100/50 border-transparent text-slate-400 dark:bg-slate-950/20'
+                    }`}>
+                      <span className="text-sm font-bold">{hasWhatsAppSent ? '✓' : '○'}</span>
+                      <span className="font-extrabold">WhatsApp Sent</span>
+                    </div>
+                    <div className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
+                      hasEmailSent 
+                        ? 'bg-blue-500/10 border-blue-500/20 text-blue-800 dark:text-blue-400' 
+                        : 'bg-slate-100/50 border-transparent text-slate-400 dark:bg-slate-950/20'
+                    }`}>
+                      <span className="text-sm font-bold">{hasEmailSent ? '✓' : '○'}</span>
+                      <span className="font-extrabold">Email Sent</span>
+                    </div>
+                    <div className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
+                      hasCustomerViewed 
+                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-400 animate-pulse' 
+                        : 'bg-slate-100/50 border-transparent text-slate-400 dark:bg-slate-950/20'
+                    }`}>
+                      <span className="text-sm font-bold">{hasCustomerViewed ? '✓' : '○'}</span>
+                      <span className="font-extrabold">Customer Viewed</span>
+                    </div>
+                    <div className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
+                      hasCustomerAccepted 
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-400' 
+                        : hasCustomerRejected
+                          ? 'bg-rose-500/10 border-rose-500/20 text-rose-800 dark:text-rose-455'
+                          : 'bg-slate-100/50 border-transparent text-slate-400 dark:bg-slate-950/20'
+                    }`}>
+                      <span className="text-sm font-bold">{hasCustomerAccepted ? '✓' : hasCustomerRejected ? '✗' : '○'}</span>
+                      <span className="font-extrabold">
+                        {hasCustomerAccepted ? 'Customer Accepted' : hasCustomerRejected ? 'Customer Rejected' : 'Customer Accepted'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TIMELINE AUDIT HISTORY */}
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                      <Activity className="h-3.5 w-3.5 text-indigo-500" />
+                      <span>Real-Time Audit Timeline</span>
+                    </span>
+                    <span className="text-[9px] font-mono bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-full text-slate-500">
+                      {activeQuoteActivities.length} Events Logged
+                    </span>
+                  </div>
+
+                  {activeQuoteActivities.length === 0 ? (
+                    <div className="text-center py-4 bg-slate-50/50 dark:bg-slate-950/20 rounded-xl border border-dashed border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] text-slate-400">No audits or interactions recorded yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 pl-2.5 border-l border-slate-150 dark:border-slate-800 ml-1.5 max-h-[140px] overflow-y-auto pr-1">
+                      {activeQuoteActivities.map((act) => (
+                        <div key={act.id} className="relative space-y-1">
+                          {/* Timeline dot */}
+                          <div className={`absolute -left-[16.5px] top-1.5 h-2 w-2 rounded-full border ${
+                            act.event === 'Quotation Created' ? 'bg-indigo-500 border-indigo-200' :
+                            act.event === 'Quotation Sent' ? 'bg-blue-500 border-blue-200' :
+                            act.event === 'Quotation Viewed' ? 'bg-amber-500 border-amber-200 animate-pulse' :
+                            act.event === 'Quotation Downloaded' ? 'bg-purple-500 border-purple-200' :
+                            act.event === 'Quotation Accepted' ? 'bg-emerald-500 border-emerald-200' :
+                            act.event === 'Quotation Rejected' ? 'bg-rose-500 border-rose-200' :
+                            'bg-slate-500 border-slate-200'
+                          }`} />
+                          
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">{act.event}</span>
+                            <span className="text-slate-400 font-mono flex items-center gap-0.5">
+                              <Clock className="h-3 w-3" />
+                              {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          {act.details && (
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/40 p-1.5 rounded-lg border border-slate-100/50 dark:border-slate-800/40 font-mono">
+                              {act.details}
+                            </p>
+                          )}
+                          <p className="text-[9px] text-slate-400 font-mono">
+                            {new Date(act.timestamp).toLocaleDateString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-900/50">
+                <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                  <Info className="h-3 w-3" />
+                  <span>End-to-End Activity Hashing Active</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsShareModalOpen(false);
+                    setShareQuote(null);
+                  }}
+                  className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 px-4 py-2 text-xs font-bold dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Close Delivery Panel
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

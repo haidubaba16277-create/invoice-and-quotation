@@ -44,7 +44,7 @@ export interface Quotation {
   customerId: string;
   issueDate: string;
   expiryDate: string;
-  status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Converted';
+  status: 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';
   subtotal: number;
   discountType: 'fixed' | 'percentage';
   discountValue: number;
@@ -119,4 +119,25 @@ export interface CompanySettings {
   termsConditions?: string;
   footerNotes?: string;
 }
+
+export interface QuotationActivity {
+  id: string;
+  quotationId: string;
+  quoteNumber: string;
+  customerName: string;
+  event: 'Quotation Created' | 'Quotation Sent' | 'Quotation Viewed' | 'Quotation Downloaded' | 'Quotation Accepted' | 'Quotation Rejected' | 'Quotation Converted';
+  timestamp: string;
+  details?: string;
+}
+
+export interface OwnerNotification {
+  id: string;
+  quotationId: string;
+  quoteNumber: string;
+  customerName: string;
+  event: 'Viewed' | 'Accepted' | 'Rejected' | 'Downloaded';
+  timestamp: string;
+  read: boolean;
+}
+
 
