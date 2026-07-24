@@ -198,6 +198,23 @@ export function ReportsView() {
 
   useEffect(() => {
     loadAllData();
+
+    const handleSync = () => {
+      loadAllData();
+    };
+
+    window.addEventListener('quotationStatusUpdated', handleSync);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    const intervalId = setInterval(handleSync, 3000);
+
+    return () => {
+      window.removeEventListener('quotationStatusUpdated', handleSync);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(intervalId);
+    };
   }, []);
 
   const formatPKR = (val: number) => {

@@ -43,44 +43,30 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
       const inputEmail = email.trim().toLowerCase();
       const inputPassword = password.trim();
 
-      // Determine if they are intentionally choosing the Sandbox account
-      const isSandboxCreds = 
-        (inputEmail === customEmail.toLowerCase() && inputPassword === customPassword) ||
-        (inputEmail === 'admin@quoteflow.pk' && inputPassword === 'admin123');
-
-      if (isSandboxCreds) {
-        // Safe offline sandbox credential check
-        const mockOwner: UserProfile = {
-          id: 'admin-sandbox',
-          email: email,
-          fullName: 'Owner Admin (Sandbox)',
-          companyName: 'QuoteFlow PK Owner',
-          createdAt: new Date().toISOString(),
-          plan: 'Enterprise',
-          role: 'owner'
-        };
-        onLoginSuccess(mockOwner);
-        return;
-      }
-
       if (!isSupabaseConfigured) {
-        // If Supabase is not configured, deny entry for non-sandbox emails
-        if (inputEmail.includes('admin')) {
+        // Offline Sandbox credential check ONLY when Supabase is NOT configured
+        const isSandboxCreds = 
+          (inputEmail === customEmail.toLowerCase() && inputPassword === customPassword) ||
+          (inputEmail === 'admin@quoteflow.pk' && inputPassword === 'admin123') ||
+          inputEmail.includes('admin');
+
+        if (isSandboxCreds) {
           const mockOwner: UserProfile = {
             id: 'admin-sandbox',
-            email: email,
-            fullName: 'Owner Admin',
+            email: email || 'admin@quoteflow.pk',
+            fullName: 'Owner Admin (Sandbox)',
             companyName: 'QuoteFlow PK Owner',
             createdAt: new Date().toISOString(),
             plan: 'Enterprise',
             role: 'owner'
           };
           onLoginSuccess(mockOwner);
+          return;
         } else {
           throw new Error(`Sandbox Access Denied. For offline demo mode, use email "${customEmail}" and password "${customPassword}"`);
         }
       } else {
-        // Live Supabase Authentication
+        // Live Supabase Authentication ONLY
         const session = await authService.signIn(email, password);
         
         // Safety guard checks
@@ -108,8 +94,13 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
   };
 
   const loadDemoOwner = () => {
-    setEmail('admin@quoteflow.pk');
-    setPassword('admin123');
+    if (isSupabaseConfigured) {
+      setEmail('haidubaba16277@gmail.com');
+      setPassword('');
+    } else {
+      setEmail('admin@quoteflow.pk');
+      setPassword('admin123');
+    }
     setError(null);
   };
 
@@ -151,6 +142,10 @@ export function AdminLogin({ onLoginSuccess, onBackToApp, isSupabaseConfigured }
                 <button
                   type="button"
                   onClick={() => {
+                    if (isSupabaseConfigured) {
+                      setError('Supabase Authentication is active. Offline Sandbox Mode is disabled in Production. Please sign in below with your registered owner Supabase email & password.');
+                      return;
+                    }
                     const mockOwner: UserProfile = {
                       id: 'admin-sandbox',
                       email: 'admin@quoteflow.pk',

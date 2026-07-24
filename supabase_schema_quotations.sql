@@ -60,6 +60,10 @@ CREATE POLICY "Users can only view their own quotations"
 ON public.quotations FOR SELECT TO authenticated
 USING (auth.uid() = user_id);
 
+CREATE POLICY "Public view policy for non-draft shared quotations"
+ON public.quotations FOR SELECT TO anon, authenticated
+USING (status IN ('Draft', 'Sent', 'Viewed', 'Accepted', 'Rejected', 'Expired', 'Converted'));
+
 CREATE POLICY "Users can only insert their own quotations" 
 ON public.quotations FOR INSERT TO authenticated
 WITH CHECK (auth.uid() = user_id);
@@ -68,6 +72,11 @@ CREATE POLICY "Users can only update their own quotations"
 ON public.quotations FOR UPDATE TO authenticated
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Public update policy for shared quotations"
+ON public.quotations FOR UPDATE TO anon, authenticated
+USING (true)
+WITH CHECK (status IN ('Viewed', 'Accepted', 'Rejected'));
 
 CREATE POLICY "Users can only delete their own quotations" 
 ON public.quotations FOR DELETE TO authenticated

@@ -111,7 +111,76 @@ export const authService = {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    // 1. ALWAYS register the user locally in the local sandbox database (localStorage)
+    // 1. If Supabase is configured, perform real Supabase registration
+    if (isSupabaseConfigured && supabase) {
+      const trialStartedAt = new Date().toISOString();
+      const trialEndsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
+      const isOwner = cleanEmail.includes('admin') || cleanEmail === 'haidubaba16277@gmail.com';
+
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: cleanPassword,
+        options: {
+          data: {
+            full_name: fullName,
+            company_name: companyName,
+            plan: isOwner ? 'Enterprise' : 'Trial',
+            role: isOwner ? 'owner' : 'customer',
+            trial_started_at: trialStartedAt,
+            trial_ends_at: isOwner ? null : trialEndsAt,
+            subscription_status: isOwner ? 'Active' : 'Trial'
+          },
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Supabase registration failed.');
+      }
+
+      if (!data.user) {
+        throw new Error('Registration failed: No user created.');
+      }
+
+      const profile: UserProfile = {
+        id: data.user.id,
+        email: cleanEmail,
+        fullName,
+        companyName,
+        createdAt: data.user.created_at || trialStartedAt,
+        plan: isOwner ? 'Enterprise' : 'Trial',
+        role: isOwner ? 'owner' : 'customer',
+        status: isOwner ? 'active' : 'trial',
+        selected_plan: isOwner ? 'Enterprise' : 'Trial',
+        trial_started_at: trialStartedAt,
+        trial_ends_at: isOwner ? null : trialEndsAt,
+        subscription_status: isOwner ? 'Active' : 'Trial'
+      };
+
+      await this.ensureProfileAndSubscriptionExists(
+        data.user.id,
+        cleanEmail,
+        fullName,
+        companyName
+      );
+
+      try {
+        const companySettingsData = {
+          user_id: data.user.id,
+          company_name: companyName,
+          owner_name: fullName,
+          email: cleanEmail,
+          phone: '',
+          address: '',
+        };
+        await supabase.from('company_settings').insert(companySettingsData);
+      } catch (dbErr) {
+        console.error('Database insertion of company profile in Supabase failed:', dbErr);
+      }
+
+      return profile;
+    }
+
+    // 2. Offline Sandbox registration ONLY when Supabase is NOT configured
     const cachedUsersStr = localStorage.getItem('quoteflow_admin_users') || '[]';
     let users = [];
     try {
@@ -147,29 +216,6 @@ export const authService = {
     users.push(newUser);
     localStorage.setItem('quoteflow_admin_users', JSON.stringify(users));
 
-    // Also create a default subscription so they show up properly in billing
-    const cachedSubsStr = localStorage.getItem('quoteflow_admin_subs') || '[]';
-    let subs = [];
-    try {
-      subs = JSON.parse(cachedSubsStr);
-    } catch {
-      subs = [];
-    }
-    subs.push({
-      id: 'sub-' + Date.now(),
-      userId: newId,
-      userName: fullName,
-      companyName: companyName,
-      plan: 'Trial',
-      billingCycle: 'monthly',
-      status: 'trial',
-      startsAt: trialStartedAt.split('T')[0],
-      expiresAt: trialEndsAt.split('T')[0],
-      paymentStatus: 'pending',
-      amount: 0
-    });
-    localStorage.setItem('quoteflow_admin_subs', JSON.stringify(subs));
-
     const isOwnerUser = cleanEmail.includes('admin') || cleanEmail === 'haidubaba16277@gmail.com';
     const profile: UserProfile = {
       id: newId,
@@ -193,72 +239,6 @@ export const authService = {
     };
     localStorage.setItem('quoteflow_local_session', JSON.stringify(session));
 
-    // 2. Synchronize with Supabase as a background effort if configured
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const isOwner = cleanEmail.toLowerCase().includes('admin') || cleanEmail.toLowerCase() === 'haidubaba16277@gmail.com';
-        const { data, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: cleanPassword,
-          options: {
-            data: {
-              full_name: fullName,
-              company_name: companyName,
-              plan: isOwner ? 'Enterprise' : 'Trial',
-              role: isOwner ? 'owner' : 'customer',
-              trial_started_at: trialStartedAt,
-              trial_ends_at: isOwner ? null : trialEndsAt,
-              subscription_status: isOwner ? 'Active' : 'Trial'
-            },
-          },
-        });
-
-        if (error) {
-          console.warn('Supabase auth signup error, relying on robust local registration:', error.message);
-        } else if (data.user) {
-          // Successfully created in Supabase too! Update profile ID to match Supabase ID
-          profile.id = data.user.id;
-
-          // Re-save local session with the correct Supabase ID
-          const updatedSession: AuthSession = {
-            user: profile,
-            accessToken: 'local-session-token-' + data.user.id,
-            expiresAt: Math.floor(Date.now() / 1000) + 3600 * 24,
-          };
-          localStorage.setItem('quoteflow_local_session', JSON.stringify(updatedSession));
-
-          // Ensure profile and subscription records are created in Supabase JIT
-          await this.ensureProfileAndSubscriptionExists(
-            data.user.id,
-            cleanEmail,
-            fullName,
-            companyName
-          );
-
-          try {
-            const companySettingsData = {
-              user_id: data.user.id,
-              company_name: companyName,
-              owner_name: fullName,
-              email: cleanEmail,
-              phone: '',
-              address: '',
-            };
-            const { error: insertError } = await supabase
-              .from('company_settings')
-              .insert(companySettingsData);
-            if (insertError) {
-              console.warn('Failed to insert company_settings in Supabase:', insertError.message);
-            }
-          } catch (dbErr) {
-            console.error('Database insertion of company profile in Supabase failed:', dbErr);
-          }
-        }
-      } catch (err: any) {
-        console.warn('Supabase signup check exception, bypassed safely:', err.message || err);
-      }
-    }
-
     return profile;
   },
 
@@ -275,39 +255,7 @@ export const authService = {
         });
 
         if (error) {
-          // Fallback check to allow logging in with the predefined local mock/demo accounts
-          const cachedUsersStr = localStorage.getItem('quoteflow_admin_users');
-          if (cachedUsersStr) {
-            const users: any[] = JSON.parse(cachedUsersStr);
-            const matched = users.find(u => u.email.trim().toLowerCase() === cleanEmail);
-            if (matched) {
-              if (matched.password === cleanPassword) {
-                const profile: UserProfile = {
-                  id: matched.id,
-                  email: matched.email,
-                  fullName: matched.fullName,
-                  companyName: matched.companyName,
-                  createdAt: matched.signupDate || new Date().toISOString(),
-                  plan: matched.plan || 'Starter',
-                  role: matched.email.toLowerCase().includes('admin') ? 'owner' : 'customer',
-                  selected_plan: matched.selected_plan || matched.plan || 'Trial',
-                  trial_started_at: matched.trial_started_at || matched.signupDate || new Date().toISOString(),
-                  trial_ends_at: matched.trial_ends_at || new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
-                  subscription_status: matched.subscription_status || 'Trial',
-                };
-                const session: AuthSession = {
-                  user: profile,
-                  accessToken: 'local-session-token-' + matched.id,
-                  expiresAt: Math.floor(Date.now() / 1000) + 3600 * 24,
-                };
-                localStorage.setItem('quoteflow_local_session', JSON.stringify(session));
-                return session;
-              } else {
-                throw new Error('Incorrect password for this user.');
-              }
-            }
-          }
-          throw error;
+          throw new Error(error.message || 'Invalid email or password.');
         }
 
         if (!data.user || !data.session) throw new Error('Sign in failed.');
@@ -418,9 +366,17 @@ export const authService = {
 
   async signOut(): Promise<void> {
     localStorage.removeItem('quoteflow_local_session');
+    try {
+      localStorage.removeItem('quoteflow_customers');
+      localStorage.removeItem('quoteflow_products');
+      localStorage.removeItem('quoteflow_quotations');
+      localStorage.removeItem('quoteflow_invoices');
+      localStorage.removeItem('quoteflow_company_settings');
+    } catch (e) {}
+
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) console.error('Supabase signOut error:', error);
     }
   },
 
@@ -474,8 +430,8 @@ export const authService = {
       }
     }
 
-    // 2. If no Supabase session or not configured, check local session
-    if (!session) {
+    // 2. If Supabase is NOT configured, check local session
+    if (!session && !isSupabaseConfigured) {
       const localSessionStr = localStorage.getItem('quoteflow_local_session');
       if (localSessionStr) {
         try {

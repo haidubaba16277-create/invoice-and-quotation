@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
+import { getPublicQuotationUrl } from '../lib/urlUtils';
 import { Quotation, QuoteItem, Customer, Product, CompanySettings, QuotationActivity } from '../types/business';
 import { UserProfile } from '../types/auth';
 import { isSubscriptionExpired, checkPlanLimits } from '../lib/subscription';
@@ -428,7 +429,7 @@ export function QuotationsView({ isSupabaseConnected, onNavigate, user }: Quotat
     setSecureToken(token);
     
     // 2. Prepare sharing contents
-    const publicLink = `${window.location.origin}/quote/public/${token}`;
+    const publicLink = getPublicQuotationUrl(token);
     
     // WhatsApp prefilled message
     const waMsg = `Hello ${currentQuote.customerName || 'Customer'},\n\nHope you are doing well. Here is our professional Quotation ${currentQuote.quoteNumber} for your review. Please click the secure link below to view details, download PDF, or digitally approve it.\n\nLink: ${publicLink}\n\nLooking forward to working with you!\n\nRegards,\n${companySettings?.companyName || 'Our Company'}`;
@@ -497,7 +498,7 @@ export function QuotationsView({ isSupabaseConnected, onNavigate, user }: Quotat
   const handleCopyLink = async () => {
     if (!shareQuote) return;
     
-    const publicLink = `${window.location.origin}/quote/public/${secureToken}`;
+    const publicLink = getPublicQuotationUrl(secureToken);
     try {
       await navigator.clipboard.writeText(publicLink);
       setCopiedLink(true);
@@ -2085,7 +2086,7 @@ export function QuotationsView({ isSupabaseConnected, onNavigate, user }: Quotat
                     <button
                       type="button"
                       onClick={() => {
-                        const publicLink = `${window.location.origin}/quote/public/${secureToken}`;
+                        const publicLink = getPublicQuotationUrl(secureToken);
                         window.open(publicLink, '_blank');
                       }}
                       className="flex flex-col items-start p-3.5 rounded-xl border border-slate-150 bg-sky-50/10 hover:bg-sky-50/30 dark:bg-slate-950/20 dark:hover:bg-slate-950/40 dark:border-slate-800 hover:border-sky-200 text-sky-700 text-left transition-all"

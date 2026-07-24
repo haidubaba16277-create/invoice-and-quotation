@@ -41,7 +41,7 @@ export interface Quotation {
   id: string;
   userId?: string;
   quoteNumber: string;
-  customerId: string;
+  customerId?: string;
   issueDate: string;
   expiryDate: string;
   status: 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';

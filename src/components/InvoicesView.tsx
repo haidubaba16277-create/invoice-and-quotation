@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { dataService } from '../services/dataService';
+import { getPublicQuotationUrl } from '../lib/urlUtils';
 import { Invoice, Customer, CompanySettings, QuoteItem } from '../types/business';
 import { UserProfile } from '../types/auth';
 import { isSubscriptionExpired } from '../lib/subscription';
@@ -234,14 +235,14 @@ export function InvoicesView({ isSupabaseConnected, user }: InvoicesViewProps) {
   const handleCopyLink = () => {
     if (!shareInvoice) return;
     // Generate beautiful public proposal view query link
-    const shareUrl = `${window.location.origin}/?q=${shareInvoice.quoteNumber}`;
+    const shareUrl = getPublicQuotationUrl(shareInvoice.quoteNumber);
     navigator.clipboard.writeText(shareUrl);
     showToast('Copied public proposal share link to clipboard!', 'success');
   };
 
   const handleWhatsAppShare = () => {
     if (!shareInvoice) return;
-    const shareUrl = `${window.location.origin}/?q=${shareInvoice.quoteNumber}`;
+    const shareUrl = getPublicQuotationUrl(shareInvoice.quoteNumber);
     const company = companySettings?.companyName || 'QuoteFlow Merchant';
     
     // Formulate pre-filled customized, highly professional text message template

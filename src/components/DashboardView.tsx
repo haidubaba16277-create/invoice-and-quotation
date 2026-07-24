@@ -285,8 +285,23 @@ export function DashboardView({ user, isSupabaseConnected, onNavigate }: Dashboa
     }
 
     loadData();
+
+    const handleDataSync = () => {
+      loadData();
+    };
+
+    window.addEventListener('quotationStatusUpdated', handleDataSync);
+    window.addEventListener('storage', handleDataSync);
+    window.addEventListener('focus', handleDataSync);
+
+    const syncInterval = setInterval(handleDataSync, 3000);
+
     return () => {
       active = false;
+      window.removeEventListener('quotationStatusUpdated', handleDataSync);
+      window.removeEventListener('storage', handleDataSync);
+      window.removeEventListener('focus', handleDataSync);
+      clearInterval(syncInterval);
     };
   }, []);
 
